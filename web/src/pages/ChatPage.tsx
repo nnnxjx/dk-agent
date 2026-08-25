@@ -16,7 +16,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { chatApi, streamChat, Conversation, Message } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { chatApi, streamChat, workflowApi, Conversation, Message, Workflow } from "@/lib/api";
 import {
   Plus,
   Send,
@@ -28,6 +35,8 @@ import {
   Wrench,
   CheckCircle2,
   ExternalLink,
+  GitBranch,
+  X,
 } from "lucide-react";
 
 interface StreamState {
@@ -44,8 +53,23 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamState, setStreamState] = useState<StreamState | null>(null);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const loadWorkflows = useCallback(async () => {
+    try {
+      const list = await workflowApi.list();
+      setWorkflows(list);
+    } catch (e) {
+      console.error("加载工作流失败", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWorkflows();
+  }, [loadWorkflows]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -127,7 +151,7 @@ export default function ChatPage() {
     setStreamState(state);
 
     abortRef.current = streamChat(
-      { message: userMsg, conversationId: activeId || undefined },
+      { message: userMsg, conversationId: activeId || undefined, workflowId: selectedWorkflowId || undefined },
       (eventType, data) => {
         setStreamState((prev) => {
           if (!prev) return prev;
@@ -287,18 +311,57 @@ export default function ChatPage() {
 
         {/* Input area */}
         <div className="border-t bg-background/80 backdrop-blur-sm p-4">
-          <div className="mx-auto flex max-w-3xl gap-2">
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-              className="min-h-[44px] max-h-[160px] resize-none"
-              rows={1}
-            />
-            <Button onClick={handleSend} disabled={!input.trim() || streaming} size="icon" className="shrink-0">
-              {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
+          <div className="mx-auto max-w-3xl">
+            {workflows.length > 0 && (
+              <div className="mb-2 flex items-center gap-2">
+                <Select value={selectedWorkflowId} onValueChange={setSelectedWorkflowId}>
+                  <SelectTrigger className="h-8 w-72 text-xs">
+                    <SelectValue placeholder="选择工作流（可选，按 DAG 编排执行）" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workflows.map((wf) => (
+                      <SelectItem key={wf.id} value={wf.id} className="text-xs">
+                        {wf.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedWorkflowId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelectedWorkflowId("")}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    清除
+                  </Button>
+                )}
+                <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {selectedWorkflowId ? (
+                    <>
+                      <GitBranch className="h-3.5 w-3.5" />
+                      将使用「{workflows.find((w) => w.id === selectedWorkflowId)?.name}」执行
+                    </>
+                  ) : (
+                    <span className="invisible">占位</span>
+                  )}
+                </span>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+                className="min-h-[44px] max-h-[160px] resize-none"
+                rows={1}
+              />
+              <Button onClick={handleSend} disabled={!input.trim() || streaming} size="icon" className="shrink-0">
+                {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
