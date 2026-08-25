@@ -1,2 +1,8 @@
 packages:
   - "web"
+allowBuilds:
+  esbuild: false
+  msw: false
+  protobufjs: false
+  sharp: false
+  unrs-resolver: false

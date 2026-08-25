@@ -9,7 +9,7 @@
     "build": "nest build",
     "build:web": "pnpm --filter @nest-agent/web build",
     "build:all": "pnpm build && pnpm build:web",
-    "dev": "nest start --watch",
+    "dev": "set NODE_OPTIONS=--max-old-space-size=8192&& nest start --watch",
     "dev:web": "pnpm --filter @nest-agent/web dev",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -27,8 +27,9 @@
   "dependencies": {
     "@langchain/anthropic": "^0.3.0",
     "@langchain/community": "^0.3.0",
-    "@langchain/core": "^0.3.0",
-    "@langchain/langgraph": "^0.2.0",
+    "@langchain/core": "^0.3.80",
+    "@langchain/deepseek": "^0.1.0",
+    "@langchain/langgraph": "^0.3.12",
     "@langchain/openai": "^0.3.0",
     "@langchain/textsplitters": "^0.1.0",
     "@nestjs/common": "^11.0.1",
@@ -55,7 +56,7 @@
     "rxjs": "^7.8.1",
     "typeorm": "^0.3.0",
     "uuid": "^11.0.0",
-    "zod": "^3.24.0"
+    "zod": "^3.25.32"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
+import { ChatDeepSeek } from '@langchain/deepseek';
 
-export type LLMProvider = 'openai' | 'anthropic' | 'dashscope';
+export type LLMProvider = 'openai' | 'anthropic' | 'dashscope' | 'deepseek';
 
 export interface LLMOptions {
   provider?: LLMProvider;
@@ -42,6 +43,16 @@ export class LLMService {
         streaming,
         maxTokens: options.maxTokens || 4096,
         anthropicApiKey: this.configService.get<string>('llm.anthropic.apiKey'),
+      });
+    }
+    if (provider === 'deepseek') {
+      const deepseekApiKey = this.configService.get<string>('llm.deepseek.apiKey');
+      return new ChatDeepSeek({
+        model: model || 'deepseek-chat',
+        temperature,
+        streaming,
+        maxTokens: options.maxTokens || 4096,
+        ...(deepseekApiKey ? { apiKey: deepseekApiKey } : {}),
       });
     }
 
