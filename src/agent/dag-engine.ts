@@ -21,6 +21,8 @@ export class DagEngine {
   compile(nodes: WorkflowNode[], edges: WorkflowEdge[], ctx: DagExecutionContext) {
     const graph = new StateGraph(MessagesAnnotation);
 
+    //点->出边map
+    //比如：a：[a->b,a->c]
     const adjacency = new Map<string, WorkflowEdge[]>();
     for (const edge of edges) {
       if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
