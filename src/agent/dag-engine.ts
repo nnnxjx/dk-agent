@@ -12,6 +12,8 @@ export interface DagExecutionContext {
   tools: Map<string, StructuredToolInterface>;
   onEvent?: (event: AGUIEvent) => void;
   threadId: string;
+  /** 取消信号：由 AgentService.execute 传入，与 streamEvents 共用 */
+  signal?: AbortSignal;
 }
 
 @Injectable()
@@ -58,6 +60,7 @@ export class DagEngine {
     const emit = (event: AGUIEvent) => ctx.onEvent?.(event);
 
     return async (state: typeof MessagesAnnotation.State) => {
+      ctx.signal?.throwIfAborted();
       emit({ type: EventType.STEP_STARTED, stepName: node.name });
 
       let result: any;
@@ -66,13 +69,13 @@ export class DagEngine {
         if (node.type === 'agent') {
           const tools = (node.config.tools || []).map((n: string) => ctx.tools.get(n)).filter(Boolean) as StructuredToolInterface[];
           const agent = createReactAgent({ llm: ctx.llm, tools, name: node.name, prompt: node.config.prompt || `You are ${node.name}.` });
-          result = await agent.invoke({ messages: state.messages });
+          result = await agent.invoke({ messages: state.messages }, { ...(ctx.signal ? { signal: ctx.signal } : {}) });
         } else if (node.type === 'tool') {
           const tool = ctx.tools.get(node.config.toolName);
           if (!tool) {
             this.logger.warn(`Tool "${node.config.toolName}" not found for node "${node.name}", skipping`);
           } else {
-            const output = await tool.invoke(JSON.stringify(node.config.input || {}));
+            const output = await tool.invoke(JSON.stringify(node.config.input || {}), { ...(ctx.signal ? { signal: ctx.signal } : {}) });
             result = { messages: [...state.messages, new HumanMessage(`[Tool ${node.name}]: ${output}`)] };
           }
         } else if (node.type === 'condition') {

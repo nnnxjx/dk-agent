@@ -17,6 +17,8 @@ export interface OrchestrationRequest {
   llmOptions?: LLMOptions;
   tenantId: string;
   onEvent: (event: AGUIEvent) => void;
+  /** 取消信号：transport 中断（req close）或显式 DELETE /runs/:runId 触发 */
+  signal?: AbortSignal;
 }
 
 @Injectable()
@@ -55,14 +57,18 @@ export class AgentService {
     onEvent({ type: EventType.RUN_STARTED, threadId, runId });
 
     try {
+      request.signal?.throwIfAborted();
       if (request.workflowId) {
         await this.executeDag(request);
       } else {
         await this.executeSupervisor(request);
       }
+      request.signal?.throwIfAborted();
       // RunFinished
       onEvent({ type: EventType.RUN_FINISHED, threadId, runId });
     } catch (error: any) {
+      // 取消直接上抛，由 Controller 统一发 RUN_CANCELLED；真异常才在这里发 RUN_ERROR
+      if (request.signal?.aborted || error?.name === 'AbortError') throw error;
       this.logger.error(`Agent execution error: ${error.message}`, error.stack);
       onEvent({ type: EventType.RUN_ERROR, message: error.message });
     }
@@ -99,7 +105,7 @@ export class AgentService {
     this.logger.log(`Supervisor agents: ${agentDefs.map((a) => `${a.name}[${a.tools.map((t) => t.name).join(',')}]`).join(', ')}`);
 
     const graph = this.supervisorFactory.createSupervisorGraph(llm, agentDefs);
-    await this.processStreamEvents(graph, request.messages, onEvent, 25);
+    await this.processStreamEvents(graph, request.messages, onEvent, 25, request.signal);
   }
 
   // ─── DAG 模式 ───
@@ -112,9 +118,9 @@ export class AgentService {
     const llm = this.llmService.createModel({ ...request.llmOptions, streaming: true });
     const toolsMap = new Map(this.toolRegistry.getAll().map((t) => [t.name, t]));
 
-    const ctx: DagExecutionContext = { llm, tools: toolsMap, onEvent, threadId: request.threadId };
+    const ctx: DagExecutionContext = { llm, tools: toolsMap, onEvent, threadId: request.threadId, signal: request.signal };
     const graph = this.dagEngine.compile(workflow.nodes, workflow.edges, ctx);
-    await this.processStreamEvents(graph, request.messages, onEvent, 50);
+    await this.processStreamEvents(graph, request.messages, onEvent, 50, request.signal);
   }
 
   /**
@@ -126,10 +132,11 @@ export class AgentService {
     messages: Array<{ role: string; content: string }>,
     onEvent: (e: AGUIEvent) => void,
     recursionLimit: number,
+    signal?: AbortSignal,
   ) {
     const eventStream = graph.streamEvents(
       { messages: this.toLangChainMessages(messages) },
-      { version: 'v2', recursionLimit },
+      { version: 'v2', recursionLimit, ...(signal ? { signal } : {}) },
     );
 
     // 跟踪当前正在流式输出的文本消息
@@ -138,6 +145,8 @@ export class AgentService {
     const activeSteps = new Set<string>();
     // 跟踪已处理过的工具调用
     const emittedToolCalls = new Set<string>();
+    // 跟踪已结束的工具调用（用于取消时补发 TOOL_CALL_END）
+    const emittedToolEnds = new Set<string>();
     // 跟踪已看到的 tool 消息
     const emittedToolResults = new Set<string>();
     // 标记当前是否正处于工具调用阶段（跳过工具调用期间的文本输出）
@@ -148,9 +157,8 @@ export class AgentService {
     const nodeHasToolCall = new Set<string>();
     // 跟踪每个节点的工具调用是否已完成（收到 on_tool_end）
     const nodeToolsDone = new Set<string>();
-    // 标记某个节点是否需要抑制工具调用前的文本（即子 agent 节点）
-    // 对于使用 createReactAgent 的子 agent，工具调用前的文本通常是复述 prompt 指令
-    let pendingTextPerNode = new Map<string, string>();
+    // 暂存子 agent 工具调用前的"思考"文本
+    const pendingTextPerNode = new Map<string, string>();
 
     // 检测文本中是否包含 XML 格式的工具调用标签（某些模型如 qwen 会这样输出）
     const TOOL_CALL_XML_RE = /<\/?tool_call>|<tool_call\b/;
@@ -185,168 +193,193 @@ export class AgentService {
       textBuffer = '';
     };
 
-    for await (const event of eventStream) {
-      const { event: eventName, data, name: runName, tags, metadata } = event;
+    try {
+      for await (const event of eventStream) {
+        // 取消检查：signal 已 abort 时尽快退出，让上层走 RUN_CANCELLED
+        signal?.throwIfAborted();
+        const { event: eventName, data, metadata } = event;
 
-      // 从 metadata 中提取当前节点名
-      // 对于嵌套子图（如 createReactAgent），checkpoint_ns 格式为 "researcher:xxx"
-      const langgraphNode = metadata?.langgraph_node || '';
-      const checkpointNs: string = metadata?.langgraph_checkpoint_ns || '';
-      // 提取顶层父节点名（用于 step 追踪）
-      const parentNode = checkpointNs ? checkpointNs.split(':')[0] : '';
-      const effectiveNode = parentNode || langgraphNode;
+        // 从 metadata 中提取当前节点名
+        // 对于嵌套子图（如 createReactAgent），checkpoint_ns 格式为 "researcher:xxx"
+        const langgraphNode = metadata?.langgraph_node || '';
+        const checkpointNs: string = metadata?.langgraph_checkpoint_ns || '';
+        // 提取顶层父节点名（用于 step 追踪）
+        const parentNode = checkpointNs ? checkpointNs.split(':')[0] : '';
+        const effectiveNode = parentNode || langgraphNode;
 
-      // ── LLM token 级别流式 ──
-      if (eventName === 'on_chat_model_stream' && data.chunk) {
-        const chunk = data.chunk;
+        // ── LLM token 级别流式 ──
+        if (eventName === 'on_chat_model_stream' && data.chunk) {
+          const chunk = data.chunk;
 
-        // 跳过 supervisor 路由节点的流式输出
-        if (langgraphNode === 'supervisor' || effectiveNode === 'supervisor') continue;
+          // 跳过 supervisor 路由节点的流式输出
+          if (langgraphNode === 'supervisor' || effectiveNode === 'supervisor') continue;
 
-        // 确保 step 已开始（使用 effectiveNode 作为 step 名）
-        if (effectiveNode && !activeSteps.has(effectiveNode)) {
-          activeSteps.add(effectiveNode);
-          onEvent({ type: EventType.STEP_STARTED, stepName: effectiveNode });
-        }
-
-        // 结构化工具调用 chunk（OpenAI 等标准模型）
-        if (chunk.tool_call_chunks?.length > 0) {
-          // 工具调用开始 → 丢弃子 agent 之前暂存的"思考"文本
-          if (effectiveNode && parentNode && langgraphNode !== parentNode) {
-            pendingTextPerNode.delete(effectiveNode);
+          // 确保 step 已开始（使用 effectiveNode 作为 step 名）
+          if (effectiveNode && !activeSteps.has(effectiveNode)) {
+            activeSteps.add(effectiveNode);
+            onEvent({ type: EventType.STEP_STARTED, stepName: effectiveNode });
           }
-          flushTextBuffer();
-          inToolCall = true;
-          if (effectiveNode) nodeHasToolCall.add(effectiveNode);
 
-          for (const tc of chunk.tool_call_chunks) {
-            const toolCallId = tc.id || '';
-            if (toolCallId && !emittedToolCalls.has(toolCallId)) {
-              emittedToolCalls.add(toolCallId);
-              onEvent({
-                type: EventType.TOOL_CALL_START,
-                toolCallId,
-                toolCallName: tc.name || '',
-                parentMessageId: genId(),
-              });
+          // 结构化工具调用 chunk（OpenAI 等标准模型）
+          if (chunk.tool_call_chunks?.length > 0) {
+            // 工具调用开始 → 丢弃子 agent 之前暂存的"思考"文本
+            if (effectiveNode && parentNode && langgraphNode !== parentNode) {
+              pendingTextPerNode.delete(effectiveNode);
             }
-            if (toolCallId && tc.args) {
-              onEvent({ type: EventType.TOOL_CALL_ARGS, toolCallId, delta: tc.args });
-            }
-          }
-          continue;
-        }
-
-        // 文本内容 token
-        const textContent = extractText(chunk.content);
-        if (!textContent) continue;
-
-        // 如果正在结构化工具调用阶段，跳过同步输出的文本（通常是冗余的）
-        if (inToolCall) continue;
-
-        // 检查是否包含 XML 工具调用标签
-        if (TOOL_CALL_XML_RE.test(textContent) || TOOL_CALL_XML_RE.test(textBuffer + textContent)) {
-          textBuffer += textContent;
-          // 同时标记此节点有工具调用（XML 格式的）
-          if (effectiveNode) nodeHasToolCall.add(effectiveNode);
-          continue;
-        }
-
-        // 对于嵌套子 agent（如 createReactAgent 内部的 LLM），
-        // 当 langgraphNode !== parentNode 时说明是子图内部的 LLM 调用
-        // 如果工具尚未完成，暂存文本以过滤工具调用前模型复述 prompt 的"思考"文本
-        const isNestedAgent = parentNode && langgraphNode !== parentNode;
-        if (isNestedAgent && !nodeToolsDone.has(effectiveNode)) {
-          const prev = pendingTextPerNode.get(effectiveNode) || '';
-          pendingTextPerNode.set(effectiveNode, prev + textContent);
-          continue;
-        }
-
-        // 如果缓冲区有内容，先刷出
-        if (textBuffer) {
-          textBuffer += textContent;
-          flushTextBuffer();
-          continue;
-        }
-
-        // 正常文本 token，直接发射
-        if (!currentMessageId) {
-          currentMessageId = genId();
-          onEvent({ type: EventType.TEXT_MESSAGE_START, messageId: currentMessageId, role: 'assistant' });
-        }
-        onEvent({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: currentMessageId, delta: textContent });
-      }
-
-      // ── LLM 调用结束 ──
-      if (eventName === 'on_chat_model_end' && data.output) {
-        if (langgraphNode === 'supervisor' || effectiveNode === 'supervisor') continue;
-
-        // 刷出剩余文本缓冲区
-        flushTextBuffer();
-        inToolCall = false;
-
-        const output = data.output;
-
-        // 结束工具调用
-        if (output.tool_calls?.length > 0) {
-          for (const tc of output.tool_calls) {
-            const toolCallId = tc.id || '';
-            if (toolCallId && emittedToolCalls.has(toolCallId)) {
-              onEvent({ type: EventType.TOOL_CALL_END, toolCallId });
-            }
-          }
-        }
-
-        // 结束文本消息
-        if (currentMessageId) {
-          onEvent({ type: EventType.TEXT_MESSAGE_END, messageId: currentMessageId });
-          currentMessageId = null;
-        }
-      }
-
-      // ── 工具执行结果 ──
-      if (eventName === 'on_tool_end' && data.output) {
-        const toolCallId = metadata?.langgraph_tool_call_id || genId();
-        // 标记该节点的工具已执行完成，后续 LLM 输出可以正常流式发射
-        if (effectiveNode) nodeToolsDone.add(effectiveNode);
-
-        if (!emittedToolResults.has(toolCallId)) {
-          emittedToolResults.add(toolCallId);
-          const content = typeof data.output === 'string' ? data.output :
-            (data.output?.content ? String(data.output.content) : JSON.stringify(data.output));
-          onEvent({
-            type: EventType.TOOL_CALL_RESULT,
-            messageId: genId(),
-            toolCallId,
-            role: 'tool',
-            content,
-          });
-        }
-      }
-
-      // ── 节点执行结束 ──
-      if (eventName === 'on_chain_end') {
-        const stepNode = effectiveNode || langgraphNode;
-        if (stepNode && activeSteps.has(stepNode)) {
-          // 顶层节点结束：checkpoint_ns 为空且 langgraph_node 匹配
-          const isTopLevel = !checkpointNs && metadata?.langgraph_step !== undefined;
-          if (isTopLevel) {
             flushTextBuffer();
-            if (currentMessageId) {
-              onEvent({ type: EventType.TEXT_MESSAGE_END, messageId: currentMessageId });
-              currentMessageId = null;
+            inToolCall = true;
+            if (effectiveNode) nodeHasToolCall.add(effectiveNode);
+
+            for (const tc of chunk.tool_call_chunks) {
+              const toolCallId = tc.id || '';
+              if (toolCallId && !emittedToolCalls.has(toolCallId)) {
+                emittedToolCalls.add(toolCallId);
+                onEvent({
+                  type: EventType.TOOL_CALL_START,
+                  toolCallId,
+                  toolCallName: tc.name || '',
+                  parentMessageId: genId(),
+                });
+              }
+              if (toolCallId && tc.args) {
+                onEvent({ type: EventType.TOOL_CALL_ARGS, toolCallId, delta: tc.args });
+              }
             }
-            onEvent({ type: EventType.STEP_FINISHED, stepName: stepNode });
-            activeSteps.delete(stepNode);
+            continue;
+          }
+
+          // 文本内容 token
+          const textContent = extractText(chunk.content);
+          if (!textContent) continue;
+
+          // 如果正在结构化工具调用阶段，跳过同步输出的文本（通常是冗余的）
+          if (inToolCall) continue;
+
+          // 检查是否包含 XML 工具调用标签
+          if (TOOL_CALL_XML_RE.test(textContent) || TOOL_CALL_XML_RE.test(textBuffer + textContent)) {
+            textBuffer += textContent;
+            // 同时标记此节点有工具调用（XML 格式的）
+            if (effectiveNode) nodeHasToolCall.add(effectiveNode);
+            continue;
+          }
+
+          // 对于嵌套子 agent（如 createReactAgent 内部的 LLM），
+          // 当 langgraphNode !== parentNode 时说明是子图内部的 LLM 调用
+          // 如果工具尚未完成，暂存文本以过滤工具调用前模型复述 prompt 的"思考"文本
+          const isNestedAgent = parentNode && langgraphNode !== parentNode;
+          if (isNestedAgent && !nodeToolsDone.has(effectiveNode)) {
+            const prev = pendingTextPerNode.get(effectiveNode) || '';
+            pendingTextPerNode.set(effectiveNode, prev + textContent);
+            continue;
+          }
+
+          // 如果缓冲区有内容，先刷出
+          if (textBuffer) {
+            textBuffer += textContent;
+            flushTextBuffer();
+            continue;
+          }
+
+          // 正常文本 token，直接发射
+          if (!currentMessageId) {
+            currentMessageId = genId();
+            onEvent({ type: EventType.TEXT_MESSAGE_START, messageId: currentMessageId, role: 'assistant' });
+          }
+          onEvent({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: currentMessageId, delta: textContent });
+        }
+
+        // ── LLM 调用结束 ──
+        if (eventName === 'on_chat_model_end' && data.output) {
+          if (langgraphNode === 'supervisor' || effectiveNode === 'supervisor') continue;
+
+          // 刷出剩余文本缓冲区
+          flushTextBuffer();
+          inToolCall = false;
+
+          const output = data.output;
+
+          // 结束工具调用
+          if (output.tool_calls?.length > 0) {
+            for (const tc of output.tool_calls) {
+              const toolCallId = tc.id || '';
+              if (toolCallId && emittedToolCalls.has(toolCallId) && !emittedToolEnds.has(toolCallId)) {
+                emittedToolEnds.add(toolCallId);
+                onEvent({ type: EventType.TOOL_CALL_END, toolCallId });
+              }
+            }
+          }
+
+          // 结束文本消息
+          if (currentMessageId) {
+            onEvent({ type: EventType.TEXT_MESSAGE_END, messageId: currentMessageId });
+            currentMessageId = null;
+          }
+        }
+
+        // ── 工具执行结果 ──
+        if (eventName === 'on_tool_end' && data.output) {
+          const toolCallId = metadata?.langgraph_tool_call_id || genId();
+          // 标记该节点的工具已执行完成，后续 LLM 输出可以正常流式发射
+          if (effectiveNode) nodeToolsDone.add(effectiveNode);
+
+          if (!emittedToolResults.has(toolCallId)) {
+            emittedToolResults.add(toolCallId);
+            const content = typeof data.output === 'string' ? data.output :
+              (data.output?.content ? String(data.output.content) : JSON.stringify(data.output));
+            onEvent({
+              type: EventType.TOOL_CALL_RESULT,
+              messageId: genId(),
+              toolCallId,
+              role: 'tool',
+              content,
+            });
+          }
+        }
+
+        // ── 节点执行结束 ──
+        if (eventName === 'on_chain_end') {
+          const stepNode = effectiveNode || langgraphNode;
+          if (stepNode && activeSteps.has(stepNode)) {
+            // 顶层节点结束：checkpoint_ns 为空且 langgraph_node 匹配
+            const isTopLevel = !checkpointNs && metadata?.langgraph_step !== undefined;
+            if (isTopLevel) {
+              flushTextBuffer();
+              if (currentMessageId) {
+                onEvent({ type: EventType.TEXT_MESSAGE_END, messageId: currentMessageId });
+                currentMessageId = null;
+              }
+              onEvent({ type: EventType.STEP_FINISHED, stepName: stepNode });
+              activeSteps.delete(stepNode);
+            }
           }
         }
       }
-    }
 
-    // 确保最后的缓冲区和文本消息已关闭
-    flushTextBuffer();
-    if (currentMessageId) {
-      onEvent({ type: EventType.TEXT_MESSAGE_END, messageId: currentMessageId });
+      // 确保最后的缓冲区和文本消息已关闭
+      flushTextBuffer();
+      if (currentMessageId) {
+        onEvent({ type: EventType.TEXT_MESSAGE_END, messageId: currentMessageId });
+        currentMessageId = null;
+      }
+    } catch (streamErr: any) {
+      // 取消/异常收尾：把已收 token 先刷出去，保证 partial 可落库；
+      // 补发未完的 TOOL_CALL_END / TEXT_MESSAGE_END / STEP_FINISHED，避免前端转圈卡死
+      flushTextBuffer();
+      for (const toolCallId of emittedToolCalls) {
+        if (!emittedToolEnds.has(toolCallId)) {
+          emittedToolEnds.add(toolCallId);
+          try { onEvent({ type: EventType.TOOL_CALL_END, toolCallId }); } catch { /* ignore */ }
+        }
+      }
+      if (currentMessageId) {
+        try { onEvent({ type: EventType.TEXT_MESSAGE_END, messageId: currentMessageId }); } catch { /* ignore */ }
+        currentMessageId = null;
+      }
+      for (const stepName of activeSteps) {
+        try { onEvent({ type: EventType.STEP_FINISHED, stepName }); } catch { /* ignore */ }
+      }
+      activeSteps.clear();
+      throw streamErr;
     }
   }
 }

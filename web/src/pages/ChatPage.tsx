@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { chatApi, streamChat, workflowApi, Conversation, Message, Workflow } from "@/lib/api";
+import { chatApi, streamChat, chatRunApi, CANCEL_SUFFIX, workflowApi, Conversation, Message, Workflow } from "@/lib/api";
 import {
   Plus,
   Send,
@@ -37,6 +37,7 @@ import {
   ExternalLink,
   GitBranch,
   X,
+  Square,
 } from "lucide-react";
 
 interface StreamState {
@@ -57,6 +58,12 @@ export default function ChatPage() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /** 当前 runId（取自 RUN_STARTED），显式 DELETE /runs/:runId 用 */
+  const runIdRef = useRef<string | null>(null);
+  /** 是否用户主动停止（区分中断 vs 报错/正常结束） */
+  const stoppedRef = useRef(false);
+  /** settle 守卫：onDone / onAbort / handleStop 可能同时触发，保证只 commit 一次 */
+  const settledRef = useRef(false);
 
   const loadWorkflows = useCallback(async () => {
     try {
@@ -104,6 +111,38 @@ export default function ChatPage() {
     }
   }, [messages, streamState]);
 
+  // 卸载时兜底 abort，避免孤儿流
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  /** 统一收尾：commit partial 气泡 + 复位（幂等） */
+  const finishStreaming = useCallback((cancelled: boolean) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    setStreamState((prev) => {
+      if (prev && prev.currentText) {
+        const content =
+          cancelled && !prev.currentText.includes("已手动停止生成")
+            ? prev.currentText + CANCEL_SUFFIX
+            : prev.currentText;
+        const msg: Message = {
+          id: prev.messageId || Date.now().toString(),
+          role: "assistant",
+          content,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages((msgs) => [...msgs, msg]);
+      }
+      return null;
+    });
+    setStreaming(false);
+    abortRef.current = null;
+    loadConversations();
+  }, [loadConversations]);
+
   const handleNewChat = async () => {
     try {
       const conv = await chatApi.createConversation();
@@ -112,6 +151,20 @@ export default function ChatPage() {
     } catch (e) {
       console.error("创建会话失败", e);
     }
+  };
+
+  /** 切换会话前先停掉旧流，防止旧流 partial 写进新会话 */
+  const handleSelectConversation = (id: string) => {
+    if (id === activeId) return;
+    if (streaming) {
+      stoppedRef.current = true;
+      abortRef.current?.abort();
+      if (runIdRef.current) {
+        chatRunApi.cancel(runIdRef.current).catch(() => {});
+      }
+      finishStreaming(true);
+    }
+    setActiveId(id);
   };
 
   const handleDelete = async (id: string) => {
@@ -142,6 +195,9 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMessage]);
 
     setStreaming(true);
+    stoppedRef.current = false;
+    settledRef.current = false;
+    runIdRef.current = null;
     const state: StreamState = {
       steps: [],
       toolCalls: [],
@@ -158,6 +214,9 @@ export default function ChatPage() {
           const next = { ...prev };
           switch (eventType) {
             case "RUN_STARTED":
+              if (data.runId) {
+                runIdRef.current = data.runId as string;
+              }
               if (!activeId && data.threadId) {
                 setActiveId(data.threadId as string);
                 loadConversations();
@@ -201,39 +260,54 @@ export default function ChatPage() {
               break;
             case "TEXT_MESSAGE_END":
               break;
+            case "RUN_CANCELLED":
+              // 后端确认取消：未完的 step/tool 直接标 done，避免转圈卡死
+              next.steps = prev.steps.map((s) => ({ ...s, done: true }));
+              next.toolCalls = prev.toolCalls.map((t) => ({ ...t, done: true }));
+              break;
           }
           return next;
         });
+        // RUN_CANCELLED 到达即收尾（commit 带后缀 partial）
+        if (eventType === "RUN_CANCELLED") {
+          finishStreaming(true);
+        }
       },
       () => {
-        setStreamState((prev) => {
-          if (prev && prev.currentText) {
-            setMessages((msgs) => [
-              ...msgs,
-              {
-                id: prev.messageId || Date.now().toString(),
-                role: "assistant",
-                content: prev.currentText,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-          }
-          return null;
-        });
-        setStreaming(false);
-        loadConversations();
+        // done/[DONE]：若已是主动停止则 finishStreaming 幂等 no-op
+        finishStreaming(stoppedRef.current);
       },
       (err) => {
         console.error("流式请求错误", err);
-        setStreaming(false);
-        setStreamState(null);
+        finishStreaming(false);
+      },
+      {
+        onAbort: () => {
+          // transport abort 收尾（handleStop 已立即收尾时此处 no-op）
+          finishStreaming(true);
+        },
       },
     );
+  };
+
+  /** DeepSeek/ChatGPT 式停止：双通道取消 + 立即本地收尾 */
+  const handleStop = () => {
+    if (!streaming) return;
+    stoppedRef.current = true;
+    // ① 关 transport：浏览器关 SSE socket → Nest req close → abort()
+    abortRef.current?.abort();
+    // ② 显式 cancel：兜底（代理不透传 RST 时仍可停），不 await
+    if (runIdRef.current) {
+      chatRunApi.cancel(runIdRef.current).catch(() => {});
+    }
+    // ③ 立即本地收尾，保证 100ms 内视觉反馈；onAbort/RUN_CANCELLED 到达时幂等跳过
+    finishStreaming(true);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (streaming) return;
       handleSend();
     }
   };
@@ -257,7 +331,7 @@ export default function ChatPage() {
                 className={`group flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent ${
                   activeId === conv.id ? "bg-accent" : ""
                 }`}
-                onClick={() => setActiveId(conv.id)}
+                onClick={() => handleSelectConversation(conv.id)}
               >
                 <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="flex-1 truncate">{conv.title || "新对话"}</span>
@@ -354,12 +428,18 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+                placeholder={streaming ? "正在生成中，点击右侧按钮停止..." : "输入消息... (Enter 发送, Shift+Enter 换行)"}
                 className="min-h-[44px] max-h-[160px] resize-none"
                 rows={1}
               />
-              <Button onClick={handleSend} disabled={!input.trim() || streaming} size="icon" className="shrink-0">
-                {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              <Button
+                onClick={streaming ? handleStop : handleSend}
+                disabled={!streaming && !input.trim()}
+                size="icon"
+                className="shrink-0"
+                title={streaming ? "停止生成" : "发送"}
+              >
+                {streaming ? <Square className="h-4 w-4" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
           </div>

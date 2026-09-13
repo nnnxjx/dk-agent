@@ -60,6 +60,14 @@ export class ChatService {
     await this.redisService.del(MSG_KEY(id));
   }
 
+  /** 轻量 touch：更新 updatedAt，保证会话列表排序（save 触发 UpdateDateColumn） */
+  async touchConversation(id: string, tenantId: string) {
+    const conv = await this.convRepo.findOne({ where: { id, tenantId } });
+    if (!conv) return;
+    await this.convRepo.save(conv);
+    await this.redisService.del(CONV_KEY(id));
+  }
+
   /**
    * 根据用户第一条消息自动生成对话标题
    */

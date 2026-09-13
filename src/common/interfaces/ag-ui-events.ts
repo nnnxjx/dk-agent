@@ -9,6 +9,7 @@ export enum EventType {
   RUN_STARTED = 'RUN_STARTED',
   RUN_FINISHED = 'RUN_FINISHED',
   RUN_ERROR = 'RUN_ERROR',
+  RUN_CANCELLED = 'RUN_CANCELLED',
   STEP_STARTED = 'STEP_STARTED',
   STEP_FINISHED = 'STEP_FINISHED',
 
@@ -57,6 +58,14 @@ export interface RunErrorEvent extends BaseEvent {
   type: EventType.RUN_ERROR;
   message: string;
   code?: string;
+}
+
+/** 生命周期: RunCancelled（用户主动中断，正常操作而非报错） */
+export interface RunCancelledEvent extends BaseEvent {
+  type: EventType.RUN_CANCELLED;
+  threadId: string;
+  runId: string;
+  reason?: 'client_abort' | 'explicit_cancel' | 'superseded';
 }
 
 /** 生命周期: StepStarted */
@@ -133,6 +142,7 @@ export type AGUIEvent =
   | RunStartedEvent
   | RunFinishedEvent
   | RunErrorEvent
+  | RunCancelledEvent
   | StepStartedEvent
   | StepFinishedEvent
   | TextMessageStartEvent

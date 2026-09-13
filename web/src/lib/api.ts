@@ -68,6 +68,17 @@ export const chatApi = {
 };
 
 // SSE chat stream
+export interface StreamChatCallbacks {
+  onEvent: (event: string, data: Record<string, unknown>) => void;
+  onDone: () => void;
+  onError: (err: Error) => void;
+  /** 用户主动 abort（停止按钮/切会话/卸载）时调用，不再静默吞掉 */
+  onAbort?: () => void;
+}
+
+/** 中断 partial 落库后缀（与后端 CANCEL_SUFFIX 保持一致） */
+export const CANCEL_SUFFIX = "\n\n> ⏹ 已手动停止生成";
+
 export function streamChat(
   body: {
     message: string;
@@ -78,9 +89,11 @@ export function streamChat(
   onEvent: (event: string, data: Record<string, unknown>) => void,
   onDone: () => void,
   onError: (err: Error) => void,
+  opts?: { onAbort?: () => void },
 ): AbortController {
   const controller = new AbortController();
   const token = getToken();
+  const onAbort = opts?.onAbort;
 
   fetch(`${BASE}/chat/completions`, {
     method: "POST",
@@ -96,32 +109,56 @@ export function streamChat(
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No readable stream");
 
+      // abort 时立即释放底层 reader，避免 TCP 滞留
+      controller.signal.addEventListener("abort", () => {
+        reader.cancel().catch(() => {});
+      });
+
       const decoder = new TextDecoder();
       let buffer = "";
 
+      function emitFrame(frame: string) {
+        const text = frame.trim();
+        if (!text) return;
+        // 一帧内可能有多行：首个 event: 行 + data: 行
+        let currentEvent = "";
+        let payload = "";
+        for (const line of text.split("\n")) {
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            payload += line.slice(5).trim();
+          }
+        }
+        if (!payload) return;
+        if (payload === "[DONE]") {
+          onDone();
+          return true;
+        }
+        try {
+          const parsed = JSON.parse(payload);
+          onEvent(currentEvent || (parsed as Record<string, unknown>).type as string, parsed);
+        } catch {
+          // 解析失败的碎帧忽略（下一帧会补齐）
+        }
+        return false;
+      }
+
       function read(): Promise<void> {
+        // 已被外部 abort：直接收尾，不再读流
+        if (controller.signal.aborted) return Promise.resolve();
         return reader!.read().then(({ done, value }) => {
+          if (controller.signal.aborted) return;
           if (done) {
             onDone();
             return;
           }
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          let currentEvent = "";
-          for (const line of lines) {
-            if (line.startsWith("event: ")) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith("data: ")) {
-              const raw = line.slice(6).trim();
-              if (raw === "[DONE]") {
-                onDone();
-                return;
-              }
-              const parsed = JSON.parse(raw);
-              onEvent(currentEvent || parsed.type, parsed);
-            }
+          // 按 SSE 帧（空行）切分，余量留待下次 read
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() || "";
+          for (const frame of frames) {
+            if (emitFrame(frame)) return;
           }
           return read();
         });
@@ -129,11 +166,24 @@ export function streamChat(
       return read();
     })
     .catch((err) => {
-      if (err.name !== "AbortError") onError(err);
+      // 用户主动停止是正常操作，走 onAbort 收尾；真异常才走 onError
+      if (err?.name === "AbortError" || controller.signal.aborted) {
+        onAbort?.();
+        return;
+      }
+      onError(err);
     });
 
   return controller;
 }
+
+/** 运行中的 run：显式取消（与 transport abort 共用后端 RunRegistry） */
+export const chatRunApi = {
+  cancel: (runId: string) =>
+    request<{ success: boolean; aborted: boolean }>(`/chat/runs/${runId}`, {
+      method: "DELETE",
+    }),
+};
 
 // Workflows
 export interface WorkflowNode {

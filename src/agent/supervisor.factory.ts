@@ -38,8 +38,9 @@ export class SupervisorFactory {
       `Agents:\n` +
       agents.map((a) => `- ${a.name}: ${a.prompt}`).join('\n');
 
-    // Supervisor 路由节点
+    // Supervisor 路由节点（config.signal 由 streamEvents 自动透传，支持取消）
     const supervisorNode = async (state: typeof MessagesAnnotation.State, config?: RunnableConfig) => {
+      config?.signal?.throwIfAborted();
       const response = await llm.withStructuredOutput(routeSchema).invoke([
         { role: 'system', content: systemPrompt },
         ...state.messages,
@@ -56,6 +57,7 @@ export class SupervisorFactory {
 
     // 直接回复节点
     const responderNode = async (state: typeof MessagesAnnotation.State, config?: RunnableConfig) => {
+      config?.signal?.throwIfAborted();
       const filtered = state.messages.filter((m: any) => !(typeof m.content === 'string' && m.content.startsWith('[Supervisor]')));
       const response = await llm.invoke([
         { role: 'system', content: 'You are a helpful AI assistant. Answer naturally. Respond in the same language as the user.' },
@@ -81,7 +83,9 @@ export class SupervisorFactory {
       graph.addNode(
         agentDef.name,
         async (state: typeof MessagesAnnotation.State, config?: RunnableConfig) => {
-          const result = await reactAgent.invoke({ messages: state.messages }, config);
+          // 子 agent 透传外层 signal，取消时整个 researcher 一起停
+          const result = await reactAgent.invoke({ messages: state.messages }, { ...(config?.signal ? { signal: config.signal } : {}) });
+          config?.signal?.throwIfAborted();
           return new Command({ goto: 'supervisor', update: { messages: result.messages } });
         },
         { ends: ['supervisor'] },
