@@ -161,11 +161,12 @@ export function streamChat(
             if (emitFrame(frame)) return;
           }
           return read();
-        });
+        })
       }
       return read();
     })
     .catch((err) => {
+      console.log("streamChat error", err);
       // 用户主动停止是正常操作，走 onAbort 收尾；真异常才走 onError
       if (err?.name === "AbortError" || controller.signal.aborted) {
         onAbort?.();
