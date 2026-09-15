@@ -198,7 +198,6 @@ export class AgentService {
         // 取消检查：signal 已 abort 时尽快退出，让上层走 RUN_CANCELLED
         signal?.throwIfAborted();
         const { event: eventName, data, metadata } = event;
-
         // 从 metadata 中提取当前节点名
         // 对于嵌套子图（如 createReactAgent），checkpoint_ns 格式为 "researcher:xxx"
         const langgraphNode = metadata?.langgraph_node || '';
@@ -341,7 +340,7 @@ export class AgentService {
           const stepNode = effectiveNode || langgraphNode;
           if (stepNode && activeSteps.has(stepNode)) {
             // 顶层节点结束：checkpoint_ns 为空且 langgraph_node 匹配
-            const isTopLevel = !checkpointNs && metadata?.langgraph_step !== undefined;
+            const isTopLevel = !metadata.langgraph_checkpoint_ns.includes('|') && metadata?.langgraph_step !== undefined;
             if (isTopLevel) {
               flushTextBuffer();
               if (currentMessageId) {
