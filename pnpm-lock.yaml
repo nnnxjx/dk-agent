@@ -13,7 +13,7 @@ importers:
         version: 0.3.34(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(openai@5.12.2(ws@5.2.7)(zod@3.25.32)))(zod@3.25.32)
       '@langchain/community':
         specifier: ^0.3.0
-        version: 0.3.59(d789429dead81f739086fb6634aa1715)
+        version: 0.3.59(83358cf2e5d55194402953cbf3bd0585)
       '@langchain/core':
         specifier: ^0.3.80
         version: 0.3.80(@opentelemetry/api@1.9.1)(openai@5.12.2(ws@5.2.7)(zod@3.25.32))
@@ -29,6 +29,9 @@ importers:
       '@langchain/textsplitters':
         specifier: ^0.1.0
         version: 0.1.0(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(openai@5.12.2(ws@5.2.7)(zod@3.25.32)))
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(@cfworker/json-schema@4.1.1)(zod@3.25.32)
       '@nestjs/common':
         specifier: ^11.0.1
         version: 11.2.1(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.1)
@@ -3798,9 +3801,6 @@ packages:
     resolution: {integrity: sha512-fasDH2ont2GqF5HpyO4w0+BcewlhHEZOFn9c1ckZdHpJ56Qb7MHhH/IcJZbBGgvdtwdwNbLvxiBEdg336iA9Sg==}
     engines: {node: '>=14.6'}
 
-  color-name@1.0.0:
-    resolution: {integrity: sha512-EGBM2T7+LfAKfv+ovjidZ+KPgItQSdjMdzNsvecNLLEjwKOG2XAfJKhJo5hUuX1+i/ofedvabKZwt+S46u3v7g==}
-
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
@@ -4713,10 +4713,6 @@ packages:
   htmlparser2@10.1.0:
     resolution: {integrity: sha512-VTZkM9GWRAtEpveh7MSF6SjjrpNVNNVJfFup7xTY3UpFtm67foy9HDVXneLtFVt4pMz5kZtgNcvCniNFb1hlEQ==}
 
-  http-errors@2.0.0:
-    resolution: {integrity: sha512-FtwrG/euBzaEjYeRqOgly7G0qviiXoJWnvEH2Z1plBdXgbyjv34pHTSb9zoeHMyDy33+DWy5Wt9Wo+TURtOYSQ==}
-    engines: {node: '>= 0.8'}
-
   http-errors@2.0.1:
     resolution: {integrity: sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==}
     engines: {node: '>= 0.8'}
@@ -5599,20 +5595,12 @@ packages:
     resolution: {integrity: sha512-PXwfBhYu0hBCPw8Dn0E+WDYb7af3dSLVWKi3HGv84IdF4TyFoC0ysxFd0Goxw7nSv4T/PzEJQxsYsEiFCKo2BA==}
     engines: {node: '>=8.6'}
 
-  mime-db@1.40.0:
-    resolution: {integrity: sha512-jYdeOMPy9vnxEqFRRo6ZvTZ8d9oPb+k18PKoYNYUe2stVEBPPwsln/qWzdbmaIvnhZ9v2P+CuecK+fpUfsV2mA==}
-    engines: {node: '>= 0.6'}
-
   mime-db@1.52.0:
     resolution: {integrity: sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==}
     engines: {node: '>= 0.6'}
 
   mime-db@1.54.0:
     resolution: {integrity: sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ==}
-    engines: {node: '>= 0.6'}
-
-  mime-types@2.1.24:
-    resolution: {integrity: sha512-WaFHS3MCl5fapm3oLxU4eYDw77IQM2ACcxQ9RIxfaC3ooc6PFuBMGZZsYpvoXS5D5QTWPieo1jjLdAm3TBP3cQ==}
     engines: {node: '>= 0.6'}
 
   mime-types@2.1.35:
@@ -6202,10 +6190,6 @@ packages:
     resolution: {integrity: sha512-hek2mFQpPuI4E1BBKrSto+BU3e3x4xuarsbiwr3+lf7p44juvFMV0XFWQAP3xUyqXA4RrXLIoaSUGbSt056ZMw==}
     engines: {node: '>= 0.6'}
 
-  raw-body@3.0.0:
-    resolution: {integrity: sha512-RmkhL8CAyCRPXCE28MMH0z2PNWQBNk2Q09ZdxM9IOOXwxwZbN+qbWaatPkdkWIKL2ZVDImrN/pK5HTRz2PcS4g==}
-    engines: {node: '>= 0.8'}
-
   raw-body@3.0.2:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
     engines: {node: '>= 0.10'}
@@ -6561,10 +6545,6 @@ packages:
 
   standard-as-callback@2.1.0:
     resolution: {integrity: sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==}
-
-  statuses@2.0.1:
-    resolution: {integrity: sha512-RwNA9Z/7PrK06rYLIzFMlaF+l73iwpzsqRIFgbMLbTcLD6cOao82TaWefPXQvB2fOC4AjuYSEndS7N/mTCbkdQ==}
-    engines: {node: '>= 0.8'}
 
   statuses@2.0.2:
     resolution: {integrity: sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==}
@@ -7488,7 +7468,7 @@ snapshots:
 
   '@anthropic-ai/sdk@0.27.3':
     dependencies:
-      '@types/node': 18.11.18
+      '@types/node': 18.19.80
       '@types/node-fetch': 2.6.13
       abort-controller: 3.0.0
       agentkeepalive: 4.6.0
@@ -7946,14 +7926,14 @@ snapshots:
 
   '@borewit/text-codec@0.2.2': {}
 
-  '@browserbasehq/stagehand@1.0.1(@playwright/test@1.62.1)(deepmerge@4.3.1)(dotenv@16.6.1)(openai@5.12.2(ws@5.2.7)(zod@3.25.32))(zod@3.25.32)':
+  '@browserbasehq/stagehand@1.0.1(@playwright/test@1.62.1)(deepmerge@4.3.1)(dotenv@17.4.2)(openai@5.12.2(ws@5.2.7)(zod@3.25.32))(zod@3.25.32)':
     dependencies:
       '@anthropic-ai/sdk': 0.27.3
       '@playwright/test': 1.62.1
       anthropic: 0.0.0
       anthropic-ai: 0.0.10
       deepmerge: 4.3.1
-      dotenv: 16.6.1
+      dotenv: 17.4.2
       openai: 5.12.2(ws@5.2.7)(zod@3.25.32)
       sharp: 0.33.5
       zod: 3.25.32
@@ -8545,7 +8525,7 @@ snapshots:
   '@isaacs/cliui@8.0.2':
     dependencies:
       string-width: 5.1.2
-      string-width-cjs: string-width@4.2.0
+      string-width-cjs: string-width@4.2.3
       strip-ansi: 7.2.0
       strip-ansi-cjs: strip-ansi@6.0.1
       wrap-ansi: 8.1.0
@@ -8796,9 +8776,9 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  '@langchain/community@0.3.59(d789429dead81f739086fb6634aa1715)':
+  '@langchain/community@0.3.59(83358cf2e5d55194402953cbf3bd0585)':
     dependencies:
-      '@browserbasehq/stagehand': 1.0.1(@playwright/test@1.62.1)(deepmerge@4.3.1)(dotenv@16.6.1)(openai@5.12.2(ws@5.2.7)(zod@3.25.32))(zod@3.25.32)
+      '@browserbasehq/stagehand': 1.0.1(@playwright/test@1.62.1)(deepmerge@4.3.1)(dotenv@17.4.2)(openai@5.12.2(ws@5.2.7)(zod@3.25.32))(zod@3.25.32)
       '@ibm-cloud/watsonx-ai': 1.7.16
       '@langchain/core': 0.3.80(@opentelemetry/api@1.9.1)(openai@5.12.2(ws@5.2.7)(zod@3.25.32))
       '@langchain/openai': 0.6.17(@langchain/core@0.3.80(@opentelemetry/api@1.9.1)(openai@5.12.2(ws@5.2.7)(zod@3.25.32)))(ws@5.2.7)
@@ -8953,7 +8933,7 @@ snapshots:
       jose: 6.2.9
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.0
-      raw-body: 3.0.0
+      raw-body: 3.0.2
       zod: 3.25.32
       zod-to-json-schema: 3.25.2(zod@3.25.32)
     optionalDependencies:
@@ -10934,15 +10914,13 @@ snapshots:
     dependencies:
       color-name: 2.1.1
 
-  color-name@1.0.0: {}
-
   color-name@1.1.4: {}
 
   color-name@2.1.1: {}
 
   color-string@1.9.1:
     dependencies:
-      color-name: 1.0.0
+      color-name: 1.1.4
       simple-swizzle: 0.2.4
 
   color-string@2.1.4:
@@ -11876,14 +11854,6 @@ snapshots:
       domhandler: 5.0.3
       domutils: 3.2.2
       entities: 7.0.1
-
-  http-errors@2.0.0:
-    dependencies:
-      depd: 2.0.0
-      inherits: 2.0.4
-      setprototypeof: 1.2.0
-      statuses: 2.0.1
-      toidentifier: 1.0.1
 
   http-errors@2.0.1:
     dependencies:
@@ -13076,15 +13046,9 @@ snapshots:
       braces: 3.0.3
       picomatch: 2.3.2
 
-  mime-db@1.40.0: {}
-
   mime-db@1.52.0: {}
 
   mime-db@1.54.0: {}
-
-  mime-types@2.1.24:
-    dependencies:
-      mime-db: 1.40.0
 
   mime-types@2.1.35:
     dependencies:
@@ -13649,13 +13613,6 @@ snapshots:
 
   range-parser@1.3.0: {}
 
-  raw-body@3.0.0:
-    dependencies:
-      bytes: 3.1.2
-      http-errors: 2.0.0
-      iconv-lite: 0.6.3
-      unpipe: 1.0.0
-
   raw-body@3.0.2:
     dependencies:
       bytes: 3.1.2
@@ -14136,8 +14093,6 @@ snapshots:
 
   standard-as-callback@2.1.0: {}
 
-  statuses@2.0.1: {}
-
   statuses@2.0.2: {}
 
   stdin-discarder@0.2.2: {}
@@ -14546,7 +14501,7 @@ snapshots:
   type-is@1.6.18:
     dependencies:
       media-typer: 0.3.0
-      mime-types: 2.1.24
+      mime-types: 2.1.35
 
   type-is@2.1.0:
     dependencies:
