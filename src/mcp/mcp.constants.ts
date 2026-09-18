@@ -1,4 +1,4 @@
-/** 阶段 0 产物：MCP 功能开关与默认超时，后续阶段接入 configuration.ts */
+/** 阶段 0-1 产物：MCP 功能开关与默认配额/超时，后续阶段接入 configuration.ts */
 export const MCP_CONSTANTS = {
   /** 总开关：关闭后不创建任何 MCP 连接，不影响内置工具 */
   enabledEnv: 'MCP_ENABLED',
@@ -10,4 +10,6 @@ export const MCP_CONSTANTS = {
   defaultToolCallTimeoutMs: 60_000,
   /** 允许随请求发送的鉴权头白名单 */
   allowedHeaderNames: ['authorization', 'x-api-key'],
+  /** 单次 listTools 拉取上限：防超大清单污染内存/prompt，超出则 truncated=true */
+  maxToolsPerList: 200,
 } as const;

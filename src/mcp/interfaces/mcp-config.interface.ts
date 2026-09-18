@@ -25,11 +25,24 @@ export type McpConnectionConfig = McpHttpConnectionConfig;
 export interface McpToolInfo {
   name: string;
   description?: string;
+  /** 远端原始 inputSchema，原样透传；解析/执行归阶段 2 工具适配层负责 */
+  inputSchema?: Record<string, unknown>;
 }
 
 export interface McpConnectionResult {
   tools: McpToolInfo[];
   durationMs: number;
+  /** listTools 分页是否被截断（达到 maxTools 上限） */
+  truncated?: boolean;
+}
+
+/** callTool 归一化后的调用结果（文本 + 元信息） */
+export interface McpToolCallResult {
+  text: string;
+  isError: boolean;
+  truncated: boolean;
+  blockCount: number;
+  structuredContent?: Record<string, unknown>;
 }
 
 /** 阶段 0 约定的 MCP 日志上下文，不含敏感字段 */
