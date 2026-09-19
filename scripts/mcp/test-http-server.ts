@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/require-await */
 // @ts-nocheck
 /* 阶段 1 本地联调脚本：Streamable HTTP 测试 Server，仅本地使用
  * 工具：echo（文本回显）、fail（返回 isError）、big（超长文本，验证截断）
+ * 注意：脚本不纳入 nest build，仅 ts-node 联调用；类型宽松处理。
  */
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -10,14 +12,19 @@ import { z } from 'zod';
 const PORT = Number(process.env.MCP_TEST_PORT || 3100);
 
 function createServer(): McpServer {
-  const server = new McpServer({ name: 'nest-agent-mcp-test-server', version: '0.1.0' });
+  const server = new McpServer({
+    name: 'nest-agent-mcp-test-server',
+    version: '0.1.0',
+  });
   server.registerTool(
     'echo',
     {
       description: 'Echo back the input text for MCP connectivity testing.',
       inputSchema: { text: z.string().describe('Text to echo back') },
     },
-    async ({ text }) => ({ content: [{ type: 'text', text: `echo: ${text}` }] }),
+    async ({ text }) => ({
+      content: [{ type: 'text', text: `echo: ${text}` }],
+    }),
   );
   server.registerTool(
     'fail',
@@ -45,7 +52,9 @@ async function main() {
   const app = createMcpExpressApp({ host: '127.0.0.1' });
   app.post('/mcp', async (req, res) => {
     const server = createServer();
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
     try {
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);

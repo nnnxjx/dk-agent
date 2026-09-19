@@ -12,4 +12,10 @@ export const MCP_CONSTANTS = {
   allowedHeaderNames: ['authorization', 'x-api-key'],
   /** 单次 listTools 拉取上限：防超大清单污染内存/prompt，超出则 truncated=true */
   maxToolsPerList: 200,
+  /** 工具描述进入 prompt 前的上限，超出截断并标注 */
+  maxToolDescriptionChars: 2000,
+  /** 单个工具 inputSchema JSON 序列化后的上限，超出则拒绝注册该工具 */
+  maxToolSchemaBytes: 32_768,
+  /** 工具名分段仅允许字母数字下划线，其余字符归一化为下划线 */
+  toolNamePattern: /^[A-Za-z0-9_]+$/,
 } as const;

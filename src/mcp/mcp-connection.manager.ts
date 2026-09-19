@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MCP_CONSTANTS } from './mcp.constants';
-import { McpConnectionError, McpError, McpToolCallError } from './errors/mcp.errors';
+import {
+  McpConnectionError,
+  McpError,
+  McpToolCallError,
+} from './errors/mcp.errors';
 import {
   McpConnectionConfig,
   McpConnectionResult,
@@ -29,11 +33,18 @@ export class McpConnectionManager {
     return this.leakedConnections;
   }
 
-  async testConnection(config: McpConnectionConfig): Promise<McpConnectionResult> {
+  async testConnection(
+    config: McpConnectionConfig,
+  ): Promise<McpConnectionResult> {
     const startedAt = Date.now();
-    this.logger.log(`Testing MCP connection: ${JSON.stringify(sanitizeMcpConfigForLog(config))}`);
+    this.logger.log(
+      `Testing MCP connection: ${JSON.stringify(sanitizeMcpConfigForLog(config))}`,
+    );
 
-    const timeoutMs = resolveMcpTimeoutMs(config, MCP_CONSTANTS.defaultConnectionTimeoutMs);
+    const timeoutMs = resolveMcpTimeoutMs(
+      config,
+      MCP_CONSTANTS.defaultConnectionTimeoutMs,
+    );
     const maxTools = MCP_CONSTANTS.maxToolsPerList;
     const session = await this.connect(config, timeoutMs);
     try {
@@ -47,7 +58,8 @@ export class McpConnectionManager {
           timeoutMs,
           'MCP listTools',
         );
-        for (const tool of (page as { tools: McpConnectionResult['tools'] }).tools ?? []) {
+        for (const tool of (page as { tools: McpConnectionResult['tools'] })
+          .tools ?? []) {
           if (tools.length >= maxTools) {
             truncated = true;
             break;
@@ -55,7 +67,7 @@ export class McpConnectionManager {
           tools.push({
             name: tool.name,
             description: tool.description,
-            inputSchema: tool.inputSchema as Record<string, unknown> | undefined,
+            inputSchema: tool.inputSchema,
           });
         }
         if (truncated) break;
@@ -79,12 +91,19 @@ export class McpConnectionManager {
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<McpToolCallResult> {
-    this.logger.log(`Calling MCP tool "${toolName}": ${JSON.stringify(sanitizeMcpConfigForLog(config))}`);
+    this.logger.log(
+      `Calling MCP tool "${toolName}": ${JSON.stringify(sanitizeMcpConfigForLog(config))}`,
+    );
     // 先做 URL 格式校验，避免无效配置走到建连
     normalizeMcpUrl(config.url);
-    const connectTimeoutMs = resolveMcpTimeoutMs(config, MCP_CONSTANTS.defaultConnectionTimeoutMs);
+    const connectTimeoutMs = resolveMcpTimeoutMs(
+      config,
+      MCP_CONSTANTS.defaultConnectionTimeoutMs,
+    );
     const callTimeoutMs =
-      config.toolCallTimeoutMs ?? config.timeoutMs ?? MCP_CONSTANTS.defaultToolCallTimeoutMs;
+      config.toolCallTimeoutMs ??
+      config.timeoutMs ??
+      MCP_CONSTANTS.defaultToolCallTimeoutMs;
     const session = await this.connect(config, connectTimeoutMs);
     try {
       const result = await withTimeout(
@@ -94,19 +113,27 @@ export class McpConnectionManager {
       );
       const normalized = normalizeMcpCallResult(result.content, {
         isError: (result as { isError?: boolean }).isError,
-        structuredContent: (result as { structuredContent?: Record<string, unknown> }).structuredContent,
+        structuredContent: (
+          result as { structuredContent?: Record<string, unknown> }
+        ).structuredContent,
       });
       if (normalized.isError) {
-        throw new McpToolCallError(`MCP tool "${toolName}" returned isError: ${normalized.text}`, toolName, {
-          truncated: normalized.truncated,
-          blockCount: normalized.blockCount,
-        });
+        throw new McpToolCallError(
+          `MCP tool "${toolName}" returned isError: ${normalized.text}`,
+          toolName,
+          {
+            truncated: normalized.truncated,
+            blockCount: normalized.blockCount,
+          },
+        );
       }
       return normalized;
     } catch (error) {
       if (error instanceof McpToolCallError) throw error;
       if (error instanceof McpError) {
-        throw new McpToolCallError(toMcpErrorSummary(error), toolName, { code: error.code });
+        throw new McpToolCallError(toMcpErrorSummary(error), toolName, {
+          code: error.code,
+        });
       }
       throw new McpToolCallError(toMcpErrorSummary(error), toolName);
     } finally {
@@ -123,7 +150,10 @@ export class McpConnectionManager {
     }
   }
 
-  private async closeSession(session: { close: () => Promise<void> }, kind: 'test' | 'tool'): Promise<void> {
+  private async closeSession(
+    session: { close: () => Promise<void> },
+    kind: 'test' | 'tool',
+  ): Promise<void> {
     try {
       await session.close();
     } catch (error: unknown) {
@@ -139,16 +169,24 @@ export class McpConnectionManager {
     const summary = toMcpErrorSummary(error);
     const lower = summary.toLowerCase();
     if (lower.includes('401') || lower.includes('unauthorized')) {
-      return new McpConnectionError(`MCP unauthorized: ${summary}`, { kind: 'unauthorized' });
+      return new McpConnectionError(`MCP unauthorized: ${summary}`, {
+        kind: 'unauthorized',
+      });
     }
     if (lower.includes('403') || lower.includes('forbidden')) {
-      return new McpConnectionError(`MCP forbidden: ${summary}`, { kind: 'forbidden' });
+      return new McpConnectionError(`MCP forbidden: ${summary}`, {
+        kind: 'forbidden',
+      });
     }
     if (lower.includes('timed out') || lower.includes('timeout')) {
-      return new McpConnectionError(`MCP timeout: ${summary}`, { kind: 'timeout' });
+      return new McpConnectionError(`MCP timeout: ${summary}`, {
+        kind: 'timeout',
+      });
     }
     if (error instanceof McpError && error.code === 'MCP_INITIALIZE_FAILED') {
-      return new McpConnectionError(`MCP initialize failed: ${summary}`, { kind: 'initialize' });
+      return new McpConnectionError(`MCP initialize failed: ${summary}`, {
+        kind: 'initialize',
+      });
     }
     return new McpConnectionError(summary, { kind: 'connection' });
   }

@@ -64,11 +64,16 @@ export async function closeMcpClient(client: Client): Promise<void> {
   await client.close().catch(() => undefined);
 }
 
-export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new McpError(`${label} timed out after ${ms}ms`, 'MCP_TIMEOUT')),
+      () =>
+        reject(new McpError(`${label} timed out after ${ms}ms`, 'MCP_TIMEOUT')),
       ms,
     );
     timer.unref?.();
@@ -90,5 +95,9 @@ function toTransportError(error: unknown, connected: boolean): McpError {
   if (lower.includes('timed out') || lower.includes('timeout')) {
     return new McpError(message, 'MCP_TIMEOUT', error);
   }
-  return new McpError(message, connected ? 'MCP_INITIALIZE_FAILED' : 'MCP_CONNECTION_FAILED', error);
+  return new McpError(
+    message,
+    connected ? 'MCP_INITIALIZE_FAILED' : 'MCP_CONNECTION_FAILED',
+    error,
+  );
 }

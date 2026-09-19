@@ -1,4 +1,7 @@
-import { createMcpClient, createStreamableHttpTransport } from './mcp-transport.factory';
+import {
+  createMcpClient,
+  createStreamableHttpTransport,
+} from './mcp-transport.factory';
 
 describe('mcp-transport.factory (stage 1)', () => {
   it('creates a fresh transport per call (never reuse started transport)', () => {
@@ -13,6 +16,11 @@ describe('mcp-transport.factory (stage 1)', () => {
   });
 
   it('rejects disallowed headers before creating client', () => {
-    expect(() => createMcpClient({ url: 'http://localhost:3100/mcp', headers: { 'x-evil': '1' } })).toThrow();
+    expect(() =>
+      createMcpClient({
+        url: 'http://localhost:3100/mcp',
+        headers: { 'x-evil': '1' },
+      }),
+    ).toThrow();
   });
 });

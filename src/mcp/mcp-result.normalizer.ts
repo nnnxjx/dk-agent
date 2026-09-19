@@ -33,10 +33,16 @@ function byteLength(value: string): number {
   return Buffer.byteLength(value, 'utf8');
 }
 
-function truncateText(value: string, maxBytes: number): { text: string; truncated: boolean } {
+function truncateText(
+  value: string,
+  maxBytes: number,
+): { text: string; truncated: boolean } {
   if (byteLength(value) <= maxBytes) return { text: value, truncated: false };
   const buffer = Buffer.from(value, 'utf8').subarray(0, maxBytes);
-  return { text: `${buffer.toString('utf8')}\n…[truncated ${byteLength(value) - maxBytes} bytes]`, truncated: true };
+  return {
+    text: `${buffer.toString('utf8')}\n…[truncated ${byteLength(value) - maxBytes} bytes]`,
+    truncated: true,
+  };
 }
 
 function describeBlock(block: McpContentBlock, index: number): string {
@@ -80,7 +86,11 @@ export function normalizeMcpCallResult(
   for (let index = 0; index < blocks.length; index++) {
     const block = blocks[index] ?? {};
     let part = describeBlock(block, index);
-    if (block?.type === 'text' && typeof block.text === 'string' && byteLength(part) > MCP_RESULT_LIMITS.maxTextBytes) {
+    if (
+      block?.type === 'text' &&
+      typeof block.text === 'string' &&
+      byteLength(part) > MCP_RESULT_LIMITS.maxTextBytes
+    ) {
       const truncatedPart = truncateText(part, MCP_RESULT_LIMITS.maxTextBytes);
       part = truncatedPart.text;
       truncated = true;
@@ -89,7 +99,10 @@ export function normalizeMcpCallResult(
   }
 
   let text = parts.filter((part) => part.length > 0).join('\n');
-  if (!text) text = options?.structuredContent ? JSON.stringify(options.structuredContent) : '[]';
+  if (!text)
+    text = options?.structuredContent
+      ? JSON.stringify(options.structuredContent)
+      : '[]';
   if (byteLength(text) > MCP_RESULT_LIMITS.maxTotalBytes) {
     const truncatedAll = truncateText(text, MCP_RESULT_LIMITS.maxTotalBytes);
     text = truncatedAll.text;

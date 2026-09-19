@@ -12,17 +12,23 @@ async function main() {
   console.log(`Truncated: ${Boolean(connection.truncated)}`);
 
   const echo = await manager.callTool({ url }, 'echo', { text: 'hello-mcp' });
-  console.log(`Echo output: ${echo.text} (blocks=${echo.blockCount} truncated=${echo.truncated})`);
+  console.log(
+    `Echo output: ${echo.text} (blocks=${echo.blockCount} truncated=${echo.truncated})`,
+  );
 
   const big = await manager.callTool({ url }, 'big', {});
-  console.log(`Big output bytes=${Buffer.byteLength(big.text, 'utf8')} truncated=${big.truncated}`);
+  console.log(
+    `Big output bytes=${Buffer.byteLength(big.text, 'utf8')} truncated=${big.truncated}`,
+  );
 
   try {
     await manager.callTool({ url }, 'fail', { reason: 'boom' });
     console.log('Fail tool: unexpected success (should have thrown isError)');
     process.exitCode = 1;
   } catch (error) {
-    console.log(`Fail tool correctly threw: ${(error as McpToolCallError).message.slice(0, 120)}`);
+    console.log(
+      `Fail tool correctly threw: ${(error as McpToolCallError).message.slice(0, 120)}`,
+    );
   }
 
   try {
@@ -30,7 +36,9 @@ async function main() {
     console.log('Missing tool: unexpected success');
     process.exitCode = 1;
   } catch (error) {
-    console.log(`Missing tool correctly threw: ${(error as Error).message.slice(0, 120)}`);
+    console.log(
+      `Missing tool correctly threw: ${(error as Error).message.slice(0, 120)}`,
+    );
   }
 
   console.log(`Leaked connections: ${manager.getLeakedConnections()}`);
