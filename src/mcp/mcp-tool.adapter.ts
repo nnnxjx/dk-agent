@@ -180,9 +180,9 @@ export function adaptMcpToolToLangChain(
   });
   // 附加审计元数据：不进入 prompt，仅供日志/阶段 6 授权使用
   (
-    dynamicTool as (StructuredToolInterface & {
+    dynamicTool as StructuredToolInterface & {
       metadata?: Record<string, unknown>;
-    })
+    }
   ).metadata = {
     mcpServerAlias: sanitizeNameSegment(serverAlias, 'server'),
     mcpToolName: tool.name,

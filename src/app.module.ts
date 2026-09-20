@@ -11,12 +11,15 @@ import { ToolsModule } from './tools/tools.module';
 import { AgentModule } from './agent/agent.module';
 import { RagModule } from './rag/rag.module';
 import { ChatModule } from './chat/chat.module';
+import { McpModule } from './mcp/mcp.module';
 
 import { User } from './entities/user.entity';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { KnowledgeBase } from './entities/knowledge-base.entity';
 import { Workflow } from './entities/workflow.entity';
+import { McpServer } from './entities/mcp-server.entity';
+import { McpTool } from './entities/mcp-tool.entity';
 
 @Module({
   imports: [
@@ -38,7 +41,15 @@ import { Workflow } from './entities/workflow.entity';
         username: config.get('database.username'),
         password: config.get('database.password'),
         database: config.get('database.database'),
-        entities: [User, Conversation, Message, KnowledgeBase, Workflow],
+        entities: [
+          User,
+          Conversation,
+          Message,
+          KnowledgeBase,
+          Workflow,
+          McpServer,
+          McpTool,
+        ],
         synchronize: config.get('NODE_ENV') !== 'production',
         logging: config.get('NODE_ENV') === 'development',
       }),
@@ -51,6 +62,7 @@ import { Workflow } from './entities/workflow.entity';
     AgentModule,
     RagModule,
     ChatModule,
+    McpModule,
   ],
 })
 export class AppModule {}
