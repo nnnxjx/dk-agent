@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { McpService } from './mcp.service';
+import { McpHealthService } from './mcp-health.service';
 import { JwtAuthGuard, TenantGuard } from '../auth/guards';
 import { TenantId } from '../common/decorators/tenant.decorator';
 
@@ -50,14 +51,17 @@ const SetToolEnabledSchema = z.object({
 });
 
 /**
- * 阶段 3：MCP 管理接口（纯 HTTP）
+ * 阶段 3-4：MCP 管理接口（纯 HTTP）
  * - 全部接口要求 JWT + 租户隔离；所有查询强制带 tenantId
  * - 返回脱敏视图，不回显 headers 明文；错误不泄露凭据与完整 query
  */
 @Controller('mcp/servers')
 @UseGuards(JwtAuthGuard, TenantGuard)
 export class McpController {
-  constructor(private readonly mcpService: McpService) {}
+  constructor(
+    private readonly mcpService: McpService,
+    private readonly healthService: McpHealthService,
+  ) {}
 
   @Post()
   create(@Body() body: unknown, @TenantId() tenantId: string) {
@@ -118,6 +122,15 @@ export class McpController {
   @Get(':id/tools')
   tools(@Param('id') id: string, @TenantId() tenantId: string) {
     return this.mcpService.listTools(tenantId, id);
+  }
+
+  /**
+   * 阶段 4：探活单个 Server（复用池连接，轻量 listTools）
+   * 成功回 healthy；连续失败达阈值才标 unhealthy 并失效连接
+   */
+  @Post(':id/health')
+  health(@Param('id') id: string, @TenantId() tenantId: string) {
+    return this.mcpService.probeHealth(tenantId, id);
   }
 }
 

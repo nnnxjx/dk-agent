@@ -25,6 +25,9 @@ async function bootstrap() {
   // 全局前缀
   app.setGlobalPrefix('api/v1');
 
+  // 允许 OnModuleDestroy 关闭 MCP 池连接与后台 sweep 定时器
+  app.enableShutdownHooks();
+
   await app.listen(port);
   logger.log(`Application running on http://localhost:${port}`);
   logger.log(`API base: http://localhost:${port}/api/v1`);

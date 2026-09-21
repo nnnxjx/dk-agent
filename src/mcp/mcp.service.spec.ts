@@ -23,8 +23,8 @@ function createService(overrides?: {
       store.set(String(next.id), next);
       return next;
     },
-    find: async () => Array.from(store.values()),
-    // eslint-disable-next-line @typescript-eslint/require-await
+    find: () => Promise.resolve(Array.from(store.values())),
+
     findOne: async (opts: { where: { id: string; tenantId: string } }) => {
       if (overrides?.findOne) return overrides.findOne(opts.where);
       const row = store.get(opts.where.id) ?? null;
@@ -50,8 +50,12 @@ function createService(overrides?: {
     {
       transaction: async (fn: (m: unknown) => Promise<unknown>) => fn({}),
     } as never,
-    // eslint-disable-next-line @typescript-eslint/require-await
-    { testConnection: async () => ({ tools: [], durationMs: 1 }) } as never,
+    {
+      // eslint-disable-next-line @typescript-eslint/require-await
+      testConnection: async () => ({ tools: [], durationMs: 1 }),
+      // eslint-disable-next-line @typescript-eslint/require-await
+      invalidateServer: async () => 0,
+    } as never,
     {
       encryptObject: () => null,
       decryptObject: () => undefined,

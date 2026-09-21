@@ -8,6 +8,7 @@ import {
 import {
   McpConnectionConfig,
   McpConnectionResult,
+  McpPooledCallContext,
   McpToolCallResult,
 } from './interfaces/mcp-config.interface';
 import {
@@ -18,10 +19,16 @@ import {
 } from './mcp-connection.utils';
 import { normalizeMcpCallResult } from './mcp-result.normalizer';
 import { connectMcpClient, withTimeout } from './mcp-transport.factory';
+import {
+  McpPooledSession,
+  McpSessionKey,
+  McpSessionPool,
+} from './mcp-session.pool';
 
 /**
- * 阶段 1：单 Server 连接适配层（纯 HTTP，不做缓存、不接数据库）
- * 每次调用新建 Client + Transport，用完即 close；已启动的 transport 不复用。
+ * 阶段 4：连接管理（纯 HTTP，池化复用）
+ * - 需复用的调用方走 acquireSession/releaseSession，缓存键 tenantId + serverId + configVersion
+ * - testConnection/callTool 保持一次性语义（内部直连、用完关闭），供 test/refresh/探活使用
  */
 @Injectable()
 export class McpConnectionManager {
@@ -29,8 +36,35 @@ export class McpConnectionManager {
   /** 未正常关闭的连接计数：close 抛错或流程异常时 +1，用于测试与监控 */
   private leakedConnections = 0;
 
+  constructor(private readonly pool?: McpSessionPool) {}
+
   getLeakedConnections(): number {
     return this.leakedConnections;
+  }
+
+  /**
+   * 借用池化连接：命中复用，未命中建连；调用方必须在 finally 中 release。
+   * key 必须带 configVersion，配置变更后旧连接自动失效。
+   */
+  async acquireSession(
+    key: McpSessionKey,
+    config: McpConnectionConfig,
+  ): Promise<McpPooledSession> {
+    if (!this.pool)
+      throw new McpError(
+        'MCP session pool is not initialized',
+        'MCP_CONNECTION_FAILED',
+      );
+    return this.pool.acquire(key, config);
+  }
+
+  releaseSession(session: McpPooledSession): void {
+    this.pool?.release(session);
+  }
+
+  /** 配置变更/禁用/删除后失效旧连接 */
+  async invalidateServer(tenantId: string, serverId: string): Promise<number> {
+    return this.pool?.invalidateServer(tenantId, serverId) ?? 0;
   }
 
   async testConnection(
@@ -83,27 +117,84 @@ export class McpConnectionManager {
   }
 
   /**
-   * 调用远端工具并返回归一化文本。
-   * 兼容旧签名：此前返回 string，现返回 McpToolCallResult（仍可通过 .text 取文本）。
+   * 调用远端工具并返回归一化结果。
+   * - 默认走池化复用（需传 pooled 上下文，缓存键 tenantId + serverId + configVersion）
+   * - 不传 pooled 或 usePool=false 时走一次性连接（test/refresh/探活/单测用）
+   * - 池化调用失败超过 1 次即失效该连接，下次重建，不无限重试
    */
   async callTool(
     config: McpConnectionConfig,
     toolName: string,
     args: Record<string, unknown>,
+    pooled?: McpPooledCallContext,
   ): Promise<McpToolCallResult> {
     this.logger.log(
       `Calling MCP tool "${toolName}": ${JSON.stringify(sanitizeMcpConfigForLog(config))}`,
     );
     // 先做 URL 格式校验，避免无效配置走到建连
     normalizeMcpUrl(config.url);
-    const connectTimeoutMs = resolveMcpTimeoutMs(
-      config,
-      MCP_CONSTANTS.defaultConnectionTimeoutMs,
-    );
     const callTimeoutMs =
       config.toolCallTimeoutMs ??
       config.timeoutMs ??
       MCP_CONSTANTS.defaultToolCallTimeoutMs;
+    if (!pooled || pooled.usePool === false || !this.pool) {
+      return this.callToolOnce(config, toolName, args, callTimeoutMs);
+    }
+    const key = {
+      tenantId: pooled.tenantId,
+      serverId: pooled.serverId,
+      configVersion: pooled.configVersion,
+    };
+    const session = await this.pool.acquire(key, config);
+    try {
+      const result = await withTimeout(
+        session.client.callTool({ name: toolName, arguments: args }),
+        callTimeoutMs,
+        'MCP callTool',
+      );
+      const normalized = normalizeMcpCallResult(result.content, {
+        isError: (result as { isError?: boolean }).isError,
+        structuredContent: (
+          result as { structuredContent?: Record<string, unknown> }
+        ).structuredContent,
+      });
+      if (normalized.isError) {
+        throw new McpToolCallError(
+          `MCP tool "${toolName}" returned isError: ${normalized.text}`,
+          toolName,
+          {
+            truncated: normalized.truncated,
+            blockCount: normalized.blockCount,
+          },
+        );
+      }
+      this.pool.markHealthy(session);
+      return normalized;
+    } catch (error) {
+      // 池化失败只失效一次：连接可能已断，下次调用重建；不重试本次调用
+      const failures = this.pool.markFailure(session);
+      if (failures >= 1) {
+        await this.pool
+          .invalidateServer(pooled.tenantId, pooled.serverId)
+          .catch(() => undefined);
+      }
+      throw this.toToolError(error, toolName);
+    } finally {
+      this.pool.release(session);
+    }
+  }
+
+  /** 一次性调用：每次新建连接、用完关闭；test/refresh/探活走此路径 */
+  private async callToolOnce(
+    config: McpConnectionConfig,
+    toolName: string,
+    args: Record<string, unknown>,
+    callTimeoutMs: number,
+  ): Promise<McpToolCallResult> {
+    const connectTimeoutMs = resolveMcpTimeoutMs(
+      config,
+      MCP_CONSTANTS.defaultConnectionTimeoutMs,
+    );
     const session = await this.connect(config, connectTimeoutMs);
     try {
       const result = await withTimeout(
@@ -129,16 +220,20 @@ export class McpConnectionManager {
       }
       return normalized;
     } catch (error) {
-      if (error instanceof McpToolCallError) throw error;
-      if (error instanceof McpError) {
-        throw new McpToolCallError(toMcpErrorSummary(error), toolName, {
-          code: error.code,
-        });
-      }
-      throw new McpToolCallError(toMcpErrorSummary(error), toolName);
+      throw this.toToolError(error, toolName);
     } finally {
       await this.closeSession(session, 'tool');
     }
+  }
+
+  private toToolError(error: unknown, toolName: string): McpToolCallError {
+    if (error instanceof McpToolCallError) return error;
+    if (error instanceof McpError) {
+      return new McpToolCallError(toMcpErrorSummary(error), toolName, {
+        code: error.code,
+      });
+    }
+    return new McpToolCallError(toMcpErrorSummary(error), toolName);
   }
 
   /** 建连失败归一化：连接失败与初始化失败分开，401/403/超时显式映射 */

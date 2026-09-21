@@ -11,7 +11,11 @@ export function normalizeMcpUrl(url: string): URL {
   } catch {
     throw new McpError(`Invalid MCP server url: ${url}`, 'MCP_INVALID_CONFIG');
   }
-  if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+  if (
+    parsed.protocol !== 'https:' &&
+    parsed.hostname !== 'localhost' &&
+    parsed.hostname !== '127.0.0.1'
+  ) {
     throw new McpError(
       'MCP server url must use https in non-local environments',
       'MCP_INVALID_CONFIG',

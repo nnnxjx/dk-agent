@@ -45,6 +45,18 @@ export interface McpToolCallResult {
   structuredContent?: Record<string, unknown>;
 }
 
+/**
+ * 阶段 4：池化调用上下文
+ * - key 带 configVersion，配置变更后旧连接自动失效
+ * - usePool=false 时走一次性连接（test/refresh/探活/单测用）
+ */
+export interface McpPooledCallContext {
+  tenantId: string;
+  serverId: string;
+  configVersion: number;
+  usePool?: boolean;
+}
+
 /** 阶段 0 约定的 MCP 日志上下文，不含敏感字段 */
 export interface McpLogContext {
   tenantId?: string;

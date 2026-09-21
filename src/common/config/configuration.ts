@@ -4,7 +4,9 @@ export default () => {
 
   const jwtSecret = process.env.JWT_SECRET;
   if (isProd && !jwtSecret) {
-    throw new Error('JWT_SECRET environment variable is required in production');
+    throw new Error(
+      'JWT_SECRET environment variable is required in production',
+    );
   }
 
   return {
@@ -34,7 +36,10 @@ export default () => {
     },
     memory: {
       windowSize: parseInt(process.env.MEMORY_WINDOW_SIZE || '10', 10),
-      summaryThreshold: parseInt(process.env.MEMORY_SUMMARY_THRESHOLD || '20', 10),
+      summaryThreshold: parseInt(
+        process.env.MEMORY_SUMMARY_THRESHOLD || '20',
+        10,
+      ),
     },
     llm: {
       defaultProvider: process.env.DEFAULT_LLM_PROVIDER || 'openai',
@@ -49,6 +54,27 @@ export default () => {
       dashscope: {
         apiKey: process.env.DASHSCOPE_API_KEY,
       },
+    },
+    mcp: {
+      enabled: process.env.MCP_ENABLED !== 'false',
+      httpEnabled: process.env.MCP_HTTP_ENABLED !== 'false',
+      maxServersPerTenant: parseInt(
+        process.env.MCP_MAX_SERVERS_PER_TENANT || '20',
+        10,
+      ),
+      maxToolsPerServer: parseInt(
+        process.env.MCP_MAX_TOOLS_PER_SERVER || '200',
+        10,
+      ),
+      connectionTimeoutMs: parseInt(
+        process.env.MCP_CONNECTION_TIMEOUT_MS || '10000',
+        10,
+      ),
+      toolCallTimeoutMs: parseInt(
+        process.env.MCP_TOOL_CALL_TIMEOUT_MS || '60000',
+        10,
+      ),
+      idleTtlMs: parseInt(process.env.MCP_IDLE_TTL_MS || '120000', 10),
     },
   };
 };

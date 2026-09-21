@@ -6,6 +6,7 @@ import { McpServer } from '../entities/mcp-server.entity';
 import { McpTool } from '../entities/mcp-tool.entity';
 import { McpConnectionManager } from './mcp-connection.manager';
 import { McpCredentialsService } from './mcp-credentials.service';
+import { McpHealthService } from './mcp-health.service';
 import { buildMcpQualifiedName } from './mcp-tool.adapter';
 import { McpConnectionConfig } from './interfaces/mcp-config.interface';
 import {
@@ -72,6 +73,7 @@ export class McpService {
     private readonly dataSource: DataSource,
     private readonly connectionManager: McpConnectionManager,
     private readonly credentials: McpCredentialsService,
+    private readonly healthService?: McpHealthService,
   ) {}
 
   async createServer(
@@ -157,6 +159,12 @@ export class McpService {
     const toolCount = await this.toolRepo.count({
       where: { serverId: saved.id },
     });
+    if (versionBumped) {
+      // 旧配置版本即刻失效，下次调用按新 version 重建
+      await this.connectionManager
+        .invalidateServer(tenantId, saved.id)
+        .catch(() => undefined);
+    }
     return this.toView(saved, toolCount);
   }
 
@@ -165,7 +173,10 @@ export class McpService {
     id: string,
   ): Promise<{ success: boolean }> {
     const server = await this.requireServer(tenantId, id);
-    // 阶段 3 无长连接缓存：删除即删配置与工具快照；阶段 4 缓存落地后在此失效对应连接
+    // 先失效池连接，再删配置与工具快照，避免旧连接继续调用已删地址
+    await this.connectionManager
+      .invalidateServer(tenantId, server.id)
+      .catch(() => undefined);
     await this.dataSource.transaction(async (manager) => {
       await manager.delete(McpTool, { serverId: server.id });
       await manager.delete(McpServer, { id: server.id, tenantId });
@@ -184,6 +195,12 @@ export class McpService {
     const server = await this.requireServer(tenantId, id);
     server.enabled = enabled;
     server.status = enabled ? 'pending' : 'disabled';
+    if (!enabled) {
+      // 禁用即刻失效池连接，已借出的用完归还后由 sweep 回收
+      await this.connectionManager
+        .invalidateServer(tenantId, server.id)
+        .catch(() => undefined);
+    }
     const saved = await this.serverRepo.save(server);
     const toolCount = await this.toolRepo.count({
       where: { serverId: saved.id },
@@ -230,8 +247,8 @@ export class McpService {
       const existing = await manager.find(McpTool, {
         where: { serverId: server.id },
       });
-      const byName = new Map(existing.map((t) => [t.name, t]));
-      const seen = new Set<string>();
+      const byName = new Map(existing.map((t) => [t.name, t]));//数据库中的工具列表
+      const seen = new Set<string>();//mcp最新工具列表
 
       for (const remote of discovered.tools) {
         seen.add(remote.name);
@@ -241,7 +258,7 @@ export class McpService {
               .update(JSON.stringify(remote.inputSchema))
               .digest('hex')
           : null;
-        const current = byName.get(remote.name);
+        const current = byName.get(remote.name);//查看当前的mcp的每一个工具是否还在本地的列表中可以找到
         if (!current) {
           await manager.save(
             manager.create(McpTool, {
@@ -300,6 +317,30 @@ export class McpService {
   async listTools(tenantId: string, serverId: string) {
     await this.requireServer(tenantId, serverId);
     return this.toolRepo.find({ where: { serverId }, order: { name: 'ASC' } });
+  }
+
+  /**
+   * 阶段 4：探活（复用池连接）
+   * - 健康服务未注入（单测）时退化为一次性 testServer
+   * - 禁用的 Server 直接返回 disabled，不建连
+   */
+  async probeHealth(tenantId: string, id: string) {
+    const server = await this.requireServer(tenantId, id);
+    if (!server.enabled) {
+      return { status: 'disabled' as const, evictedPool: 0 };
+    }
+    if (!this.healthService) {
+      const result = await this.testServer(tenantId, id);
+      return { status: 'healthy' as const, durationMs: result.durationMs };
+    }
+    const status = await this.healthService.probe({
+      tenantId,
+      serverId: server.id,
+      configVersion: server.configVersion,
+      config: this.toConnectionConfig(server),
+    });
+    const view = await this.getServer(tenantId, id);
+    return { status, server: view };
   }
 
   async setToolEnabled(tenantId: string, toolId: string, enabled: boolean) {
