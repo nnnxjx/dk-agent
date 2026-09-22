@@ -25,7 +25,12 @@
 
 - `GET /mcp/agents/:agentName/grants`：查看授权清单
 - `PUT /mcp/agents/:agentName/grants { qualifiedNames }`：全量替换；空数组收回全部
-- 前端 `mcpApi.agentGrants/setAgentGrants` 已封装，页面授权编辑器待后续迭代
+
+## 前端
+
+- `McpPage` 顶部「Agent 授权」对话框：输入 Agent 名（默认 `researcher`，DAG 填 agent 节点名），聚合各服务的工具清单多选，保存即 `PUT` 全量替换（含二次确认，空选即收回全部）
+- 禁用/失效工具不可勾选（即使有 grant 也不会生效，后端二次校验兜底）
+- `mcpApi.agentGrants/setAgentGrants` 已封装
 
 ## 数据维护
 

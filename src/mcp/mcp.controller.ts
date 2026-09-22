@@ -76,6 +76,11 @@ export class McpController {
     return this.mcpService.listServers(tenantId);
   }
 
+  @Get('tools')
+  tools(@TenantId() tenantId: string) {
+    return this.mcpService.listTools(tenantId);
+  }
+
   @Get(':id')
   get(@Param('id') id: string, @TenantId() tenantId: string) {
     return this.mcpService.getServer(tenantId, id);
@@ -120,7 +125,7 @@ export class McpController {
   }
 
   @Get(':id/tools')
-  tools(@Param('id') id: string, @TenantId() tenantId: string) {
+  toolsByServerId(@Param('id') id: string, @TenantId() tenantId: string) {
     return this.mcpService.listTools(tenantId, id);
   }
 

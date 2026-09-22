@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { McpServer } from '../entities/mcp-server.entity';
@@ -84,6 +89,8 @@ export class McpService {
   ): Promise<McpServerView> {
     const alias = this.normalizeAlias(input.alias);
     normalizeMcpUrl(input.url);
+    // 同一租户内 URL 去重：避免重复接入同一远端导致工具重复
+    await this.assertUrlNotDuplicated(tenantId, input.url);
     const headers = normalizeMcpHeaders(input.headers);
     const server = this.serverRepo.create({
       tenantId,
@@ -130,6 +137,7 @@ export class McpService {
     if (input.name !== undefined) server.name = input.name.trim();
     if (input.url !== undefined && input.url.trim() !== server.url) {
       normalizeMcpUrl(input.url);
+      await this.assertUrlNotDuplicated(tenantId, input.url, server.id);
       server.url = input.url.trim();
       versionBumped = true;
     }
@@ -319,9 +327,19 @@ export class McpService {
     };
   }
 
-  async listTools(tenantId: string, serverId: string) {
-    await this.requireServer(tenantId, serverId);
-    return this.toolRepo.find({ where: { serverId }, order: { name: 'ASC' } });
+  async listTools(tenantId: string, serverId?: string) {
+    if (serverId) {
+      await this.requireServer(tenantId, serverId);
+      return this.toolRepo.find({ where: { serverId }, order: { name: 'ASC' } });
+    }
+    else {
+      //server表内连接tool表用于直接查询当前租户下的全部工具
+      return await this.toolRepo
+      .createQueryBuilder('tool')
+      .innerJoin(McpServer, 'server', 'server.id = tool.serverId')
+      .where('server.tenantId = :tenantId', { tenantId })
+      .getMany();
+    }
   }
 
   /**
@@ -394,6 +412,39 @@ export class McpService {
       throw new Error('MCP server alias must match /^[a-z0-9_]{2,48}$/');
     }
     return normalized;
+  }
+
+  /**
+   * 同租户 URL 去重：归一化后比较（去末尾斜杠、host 小写），
+   * query 参与比较（不同 token 的同地址视为不同服务）。
+   * 更新时排除自身，避免误伤。
+   */
+  private normalizeUrlForDedup(url: string): string {
+    const trimmed = url.trim();
+    try {
+      const parsed = new URL(trimmed);
+      const path = parsed.pathname.replace(/\/+$/, '') || '/';
+      return `${parsed.protocol}//${parsed.host.toLowerCase()}${path}${parsed.search}`;
+    } catch {
+      return trimmed.replace(/\/+$/, '');
+    }
+  }
+
+  private async assertUrlNotDuplicated(
+    tenantId: string,
+    url: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const servers = await this.serverRepo.find({ where: { tenantId } });
+    const want = this.normalizeUrlForDedup(url);
+    const hit = servers.find(
+      (s) => s.id !== excludeId && this.normalizeUrlForDedup(s.url) === want,
+    );
+    if (hit) {
+      throw new ConflictException(
+        `MCP server URL already exists in this tenant (alias="${hit.alias}")`,
+      );
+    }
   }
 
   private toView(server: McpServer, toolCount: number): McpServerView {

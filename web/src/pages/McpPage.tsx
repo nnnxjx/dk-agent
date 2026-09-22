@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState,useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { mcpApi, McpServer, McpTool } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Plug, Plus, Trash2, RefreshCw, FlaskConical, Loader2, Power, PowerOff, Activity } from 'lucide-react';
+import { Plug, Plus, Trash2, RefreshCw, FlaskConical, Loader2, Power, PowerOff, Activity, KeyRound } from 'lucide-react';
 
 const STATUS_LABEL: Record<string, string> = { pending: '待连接', healthy: '健康', unhealthy: '异常', disabled: '已禁用' };
 
@@ -39,7 +39,10 @@ export default function McpPage() {
           <h1 className="text-2xl font-bold">MCP 服务</h1>
           <p className="text-sm text-muted-foreground">通过 Streamable HTTP 接入外部工具，凭据保存后不回显</p>
         </div>
-        <ServerDialog onSaved={load} />
+        <div className="flex gap-2">
+          <AgentGrantsDialog />
+          <ServerDialog onSaved={load} />
+        </div>
       </div>
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -158,6 +161,123 @@ function ServerCard({ server, onChanged }: { server: McpServer; onChanged: () =>
         </CardContent>
       )}
     </Card>
+  );
+}
+
+function AgentGrantsDialog() {
+  const [open, setOpen] = useState(false);
+  const [agentName, setAgentName] = useState('');
+  const [allTools, setAllTools] = useState<McpTool[]>([]);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  const loadAll = useCallback(async (agent: string) => {
+    const name = agent.trim();
+    
+    setLoading(true);
+    try {
+      if(!name){
+        // 全租户一把梭：一次请求拿全部工具，无需按 server 逐个拉
+        setAllTools(await mcpApi.listAllTools());
+        return;
+      }
+      // 全租户一把梭：一次请求拿全部工具，无需按 server 逐个拉
+      setAllTools(await mcpApi.listAllTools());
+      const g = await mcpApi.agentGrants(name).catch(() => ({ granted: [] as string[] }));
+      setChecked(new Set(g.granted));
+    } catch (e: unknown) {
+      toast({ title: '加载授权失败', description: e instanceof Error ? e.message : String(e), variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  },[])
+
+  const toggle = useCallback( (qualifiedName: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(qualifiedName)) next.delete(qualifiedName);
+      else next.add(qualifiedName);
+      return next;
+    });
+  },[])
+
+  const save = useCallback(async () => {
+    const name = agentName.trim();
+    if (!name) return;
+    setSaving(true);
+    try {
+      // 全量替换语义：提交的即最终清单，未勾选的等同收回
+      await mcpApi.setAgentGrants(name, Array.from(checked));
+      toast({ title: '授权已保存', description: `Agent「${name}」可用 MCP 工具 ${checked.size} 个` });
+      setOpen(false);
+      // 保存成功后清空勾选，下次打开重新加载
+      setChecked(new Set());
+    } catch (e: unknown) {
+      toast({ title: '保存授权失败', description: e instanceof Error ? e.message : String(e), variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  },[])
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) loadAll(agentName); else setChecked(new Set()); }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="gap-2"><KeyRound className="h-4 w-4" />Agent 授权</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>Agent MCP 工具授权（白名单）</DialogTitle></DialogHeader>
+        <div className="flex gap-2">
+          <div className="flex-1 space-y-1">
+            <Label>Agent 名称</Label>
+            <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="如 researcher，或 DAG agent 节点名" />
+          </div>
+          <div className="flex items-end">
+            <Button variant="outline" size="sm" disabled={loading} onClick={() => loadAll(agentName)}>加载</Button>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">只有勾选的工具才会进入该 Agent 的工具列表；全部取消即收回全部。禁用或失效的工具即使勾选也不会生效。</p>
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : allTools.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">暂无可用工具，先刷新各服务的工具清单</p>
+        ) : (
+          <div className="max-h-80 space-y-1.5 overflow-y-auto">
+            {allTools.map((t) => (
+              <label key={t.id} className="flex cursor-pointer items-start gap-2 rounded-md border p-2 text-xs hover:bg-muted/50">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={checked.has(t.qualifiedName)}
+                  disabled={!t.enabled || t.stale}
+                  onChange={() => toggle(t.qualifiedName)}
+                />
+                <span>
+                  <span className="font-mono font-medium">{t.qualifiedName}</span>
+                  {(!t.enabled || t.stale) && <span className="text-muted-foreground">（已禁用/已失效）</span>}
+                  {t.description && <span className="block text-muted-foreground">{t.description.slice(0, 120)}</span>}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">取消</Button></DialogClose>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button disabled={saving || loading}>保存授权</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader><AlertDialogTitle>确认保存？</AlertDialogTitle>
+                <AlertDialogDescription>保存为全量替换：Agent「{agentName.trim() || '未命名'}」的 MCP 可用工具将变为当前勾选的 {checked.size} 个，未勾选的即刻收回。</AlertDialogDescription></AlertDialogHeader>
+              <AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction onClick={save}>{saving ? '保存中...' : '确认保存'}</AlertDialogAction></AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

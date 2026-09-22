@@ -23,7 +23,17 @@ function createService(overrides?: {
       store.set(String(next.id), next);
       return next;
     },
-    find: () => Promise.resolve(Array.from(store.values())),
+    find: (opts?: { where?: Record<string, unknown> }) => {
+      const rows = Array.from(store.values());
+      if (!opts?.where) return Promise.resolve(rows);
+      return Promise.resolve(
+        rows.filter((r) =>
+          Object.entries(opts.where as Record<string, unknown>).every(
+            ([k, v]) => r[k] === v,
+          ),
+        ),
+      );
+    },
 
     findOne: async (opts: { where: { id: string; tenantId: string } }) => {
       if (overrides?.findOne) return overrides.findOne(opts.where);
@@ -110,6 +120,78 @@ describe('McpService tenant isolation (stage 3)', () => {
       name: 'new',
     });
     expect(view.configVersion).toBe(5);
+  });
+
+  it('rejects duplicate url within the same tenant', async () => {
+    const { service } = createService();
+    jest.spyOn(service, 'refreshTools').mockResolvedValue({
+      added: 0,
+      updated: 0,
+      stale: 0,
+      total: 0,
+      truncated: false,
+    });
+    await service.createServer('tenant-a', {
+      name: 'a',
+      alias: 'demo',
+      url: 'http://localhost:3100/mcp',
+    });
+    // 末尾斜杠视为同一地址，同样拒绝
+    await expect(
+      service.createServer('tenant-a', {
+        name: 'b',
+        alias: 'demo2',
+        url: 'http://localhost:3100/mcp/',
+      }),
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it('allows the same url across different tenants', async () => {
+    const { service } = createService();
+    jest.spyOn(service, 'refreshTools').mockResolvedValue({
+      added: 0,
+      updated: 0,
+      stale: 0,
+      total: 0,
+      truncated: false,
+    });
+    await service.createServer('tenant-a', {
+      name: 'a',
+      alias: 'demo',
+      url: 'http://localhost:3100/mcp',
+    });
+    await expect(
+      service.createServer('tenant-b', {
+        name: 'b',
+        alias: 'demo',
+        url: 'http://localhost:3100/mcp',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects updating url to another server url in the same tenant', async () => {
+    const { service, store } = createService();
+    store.set('server-1', {
+      id: 'server-1',
+      tenantId: 'tenant-a',
+      alias: 'demo',
+      url: 'http://localhost:3100/mcp',
+      configVersion: 1,
+      enabled: true,
+    });
+    store.set('server-2', {
+      id: 'server-2',
+      tenantId: 'tenant-a',
+      alias: 'demo2',
+      url: 'http://localhost:3101/mcp',
+      configVersion: 1,
+      enabled: true,
+    });
+    await expect(
+      service.updateServer('tenant-a', 'server-2', {
+        url: 'http://localhost:3100/mcp',
+      }),
+    ).rejects.toThrow(/already exists/);
   });
 
   it('rejects invalid alias', async () => {

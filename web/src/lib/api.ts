@@ -285,6 +285,8 @@ export const mcpApi = {
   enable: (id: string) => request<McpServer>(`/mcp/servers/${id}/enable`, { method: 'POST' }),
   disable: (id: string) => request<McpServer>(`/mcp/servers/${id}/disable`, { method: 'POST' }),
   tools: (id: string) => request<McpTool[]>(`/mcp/servers/${id}/tools`),
+  /** 全租户工具清单（只需 tenantId，后端从 JWT 解析），用于 Agent 授权表单展示全部工具 */
+  listAllTools: () => request<McpTool[]>('/mcp/servers/tools'),
   health: (id: string) => request<{ status: string; server?: McpServer }>(`/mcp/servers/${id}/health`, { method: 'POST' }),
   setToolEnabled: (toolId: string, enabled: boolean) =>
     request<McpTool>(`/mcp/tools/${toolId}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
