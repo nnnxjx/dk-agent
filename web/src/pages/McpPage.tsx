@@ -185,6 +185,10 @@ function ServerDialog({ server, onSaved }: { server?: McpServer; onSaved: () => 
         await mcpApi.create({ name: name.trim(), alias: alias.trim().toLowerCase(), url: url.trim(), ...(Object.keys(headers).length ? { headers } : {}) });
       }
       setOpen(false); setAuth(''); setApiKey('');
+      if (!server) {
+        // 新增模式：保存成功后清空表单，下次打开是干净的
+        setName(''); setAlias(''); setUrl('');
+      }
       onSaved();
     } catch (e: unknown) {
       toast({ title: '保存失败', description: e instanceof Error ? e.message : String(e), variant: 'destructive' });
@@ -194,7 +198,13 @@ function ServerDialog({ server, onSaved }: { server?: McpServer; onSaved: () => 
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => {
+      setOpen(v);
+      if (v && !server) {
+        // 新增模式每次打开都清空，保证表单干净
+        setName(''); setAlias(''); setUrl(''); setAuth(''); setApiKey('');
+      }
+    }}>
       <DialogTrigger asChild>
         {server ? <Button variant="ghost" size="sm">编辑</Button> : <Button className="gap-2"><Plus className="h-4 w-4" />新增服务</Button>}
       </DialogTrigger>

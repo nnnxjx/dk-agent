@@ -98,8 +98,9 @@ export class McpService {
       status: 'pending',
     });
     const saved = await this.serverRepo.save(server);
+    let { added, updated, stale, total, truncated } = await this.refreshTools(tenantId, saved.id);
     this.logger.log(`MCP server created: tenant=${tenantId} alias=${alias}`);
-    return this.toView(saved, 0);
+    return this.toView(saved, total);
   }
 
   async listServers(tenantId: string): Promise<McpServerView[]> {
