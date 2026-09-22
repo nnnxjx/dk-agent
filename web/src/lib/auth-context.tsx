@@ -28,10 +28,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const savedToken = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
-    if (savedToken && savedUser) {
+
       setToken(savedToken);
-      setUser(JSON.parse(savedUser));
-    }
+      setUser(JSON.parse(savedUser ?? "{}"));
   }, []);
 
   const login = (t: string, u: User) => {

@@ -8,12 +8,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MessageSquare, GitBranch, Database, LogOut, Sparkles } from "lucide-react";
+import { MessageSquare, GitBranch, Database, LogOut, Sparkles, Plug } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: MessageSquare, label: "对话" },
   { to: "/workflows", icon: GitBranch, label: "工作流" },
   { to: "/knowledge", icon: Database, label: "知识库" },
+  { to: "/mcp", icon: Plug, label: "MCP 服务" },
 ];
 
 export default function Layout() {

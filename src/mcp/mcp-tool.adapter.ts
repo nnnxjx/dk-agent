@@ -153,6 +153,7 @@ export function adaptMcpToolToLangChain(
   connection: McpConnectionConfig,
   tool: McpToolInfo,
   manager: Pick<McpConnectionManager, 'callTool'>,
+  options?: { guard?: () => Promise<void> },
 ): StructuredToolInterface {
   // 前置校验：非法 URL 直接拒绝注册，不等到运行时
   normalizeMcpUrl(connection.url);
@@ -167,6 +168,8 @@ export function adaptMcpToolToLangChain(
     func: async (input: unknown) => {
       const args = toArgsObject(input);
       try {
+        // 阶段 6 调用入口二次校验：授权/状态非法直接返回拒绝文本
+        await options?.guard?.();
         const result = await manager.callTool(connection, tool.name, args);
         // 阶段 1 的 normalizer 已处理截断与占位描述，这里保留截断标记便于审计
         return result.truncated

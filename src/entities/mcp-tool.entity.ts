@@ -37,15 +37,15 @@ export class McpTool {
   @Column({ name: 'input_schema', type: 'json', nullable: true })
   inputSchema: Record<string, unknown> | null;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   enabled: boolean;
 
   /** schema 变化检测：JSON 序列化后的 sha256 */
-  @Column({ name: 'schema_hash', nullable: true })
+  @Column({ name: 'schema_hash', type: 'varchar', nullable: true })
   schemaHash: string | null;
 
   /** 远端已删除但本地保留审计时为 true */
-  @Column({ default: false })
+  @Column({ type: 'boolean', default: false })
   stale: boolean;
 
   @Column({ name: 'last_seen_at', type: 'datetime', nullable: true })

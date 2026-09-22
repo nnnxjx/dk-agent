@@ -42,19 +42,19 @@ export class McpServer {
   headersEncrypted: string | null;
 
   /** 密钥版本：轮换 MCP_CREDENTIALS_KEY 后递增写入 */
-  @Column({ name: 'credentials_key_version', default: 1 })
+  @Column({ name: 'credentials_key_version', type: 'int', default: 1 })
   credentialsKeyVersion: number;
 
-  @Column({ name: 'connection_timeout_ms', nullable: true })
+  @Column({ name: 'connection_timeout_ms', type: 'int', nullable: true })
   connectionTimeoutMs: number | null;
 
-  @Column({ name: 'tool_call_timeout_ms', nullable: true })
+  @Column({ name: 'tool_call_timeout_ms', type: 'int', nullable: true })
   toolCallTimeoutMs: number | null;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   enabled: boolean;
 
-  @Column({ default: 'pending' })
+  @Column({ type: 'varchar', default: 'pending' })
   status: McpServerStatus;
 
   @Column({ name: 'last_connected_at', type: 'datetime', nullable: true })
@@ -68,7 +68,7 @@ export class McpServer {
   lastError: string | null;
 
   /** 配置版本：URL/headers/超时变更时递增，旧连接凭此失效 */
-  @Column({ name: 'config_version', default: 1 })
+  @Column({ name: 'config_version', type: 'int', default: 1 })
   configVersion: number;
 
   @CreateDateColumn({ name: 'created_at' })

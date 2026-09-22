@@ -6,6 +6,7 @@ import { McpServer } from '../entities/mcp-server.entity';
 import { McpTool } from '../entities/mcp-tool.entity';
 import { McpConnectionManager } from './mcp-connection.manager';
 import { McpCredentialsService } from './mcp-credentials.service';
+import { McpAuthorizationService } from './mcp-authorization.service';
 import { McpHealthService } from './mcp-health.service';
 import { buildMcpQualifiedName } from './mcp-tool.adapter';
 import { McpConnectionConfig } from './interfaces/mcp-config.interface';
@@ -74,6 +75,7 @@ export class McpService {
     private readonly connectionManager: McpConnectionManager,
     private readonly credentials: McpCredentialsService,
     private readonly healthService?: McpHealthService,
+    private readonly authorization?: McpAuthorizationService,
   ) {}
 
   async createServer(
@@ -177,6 +179,8 @@ export class McpService {
     await this.connectionManager
       .invalidateServer(tenantId, server.id)
       .catch(() => undefined);
+    // 阶段 6：级联清理该 Server 命名空间下的幽灵授权
+    await this.authorization?.cleanupGrantsForServer(tenantId, server.alias).catch(() => undefined);
     await this.dataSource.transaction(async (manager) => {
       await manager.delete(McpTool, { serverId: server.id });
       await manager.delete(McpServer, { id: server.id, tenantId });
@@ -341,6 +345,20 @@ export class McpService {
     });
     const view = await this.getServer(tenantId, id);
     return { status, server: view };
+  }
+
+  /**
+   * 阶段 6：按请求装配授权工具时读取连接上下文（含解密后的 headers）。
+   * 只供后端内部调用，绝不向前端返回。
+   */
+  async getConnectionContext(tenantId: string, serverId: string): Promise<McpConnectionConfig> {
+    const server = await this.requireServer(tenantId, serverId);
+    if (!server.enabled) throw new Error(`MCP server "${server.alias}" is disabled`);
+    return this.toConnectionConfig(server);
+  }
+
+  async getServerEntity(tenantId: string, serverId: string) {
+    return this.requireServer(tenantId, serverId);
   }
 
   async setToolEnabled(tenantId: string, toolId: string, enabled: boolean) {

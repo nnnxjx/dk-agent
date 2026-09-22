@@ -6,6 +6,7 @@ import { DagEngine, DagExecutionContext } from './dag-engine';
 import { WorkflowService } from './workflow.service';
 import { RagService } from '../rag/rag.service';
 import { createRagRetrievalTool } from '../tools/rag-retrieval.tool';
+import { McpToolProvider } from '../mcp/mcp-tool.provider';
 import { AGUIEvent, EventType, genId } from '../common/interfaces/ag-ui-events';
 import { HumanMessage, SystemMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 
@@ -48,6 +49,7 @@ export class AgentService {
     private readonly dagEngine: DagEngine,
     private readonly workflowService: WorkflowService,
     private readonly ragService: RagService,
+    private readonly mcpToolProvider?: McpToolProvider,
   ) {}
 
   async execute(request: OrchestrationRequest): Promise<void> {
@@ -91,7 +93,8 @@ export class AgentService {
     // 动态创建带 tenantId 的 rag_retrieval 工具
     const ragTool = createRagRetrievalTool(this.ragService, request.tenantId);
 
-    const agentDefs: AgentDefinition[] = this.defaultAgents.map((def) => {
+    const agentDefs: AgentDefinition[] = [];
+    for (const def of this.defaultAgents) {
       const registeredTools = this.toolRegistry.getByNames(
         (this.agentToolMapping[def.name] || []).filter((n) => n !== 'rag_retrieval'),
       );
@@ -99,8 +102,21 @@ export class AgentService {
       if (this.agentToolMapping[def.name]?.includes('rag_retrieval')) {
         registeredTools.push(ragTool);
       }
-      return { ...def, tools: registeredTools };
-    });
+      // 阶段 6：按租户 + Agent 名装配授权 MCP 工具；失败时降级为空（不影响内置工具）
+      if (this.mcpToolProvider) {
+        try {
+          const mcpTools = await this.mcpToolProvider.buildAuthorizedTools({
+            tenantId: request.tenantId,
+            agentName: def.name,
+            runId: request.runId,
+          });
+          registeredTools.push(...mcpTools);
+        } catch (error) {
+          this.logger.warn(`MCP tools unavailable for agent "${def.name}": ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      agentDefs.push({ ...def, tools: registeredTools });
+    }
 
     this.logger.log(`Supervisor agents: ${agentDefs.map((a) => `${a.name}[${a.tools.map((t) => t.name).join(',')}]`).join(', ')}`);
 
@@ -117,6 +133,30 @@ export class AgentService {
 
     const llm = this.llmService.createModel({ ...request.llmOptions, streaming: true });
     const toolsMap = new Map(this.toolRegistry.getAll().map((t) => [t.name, t]));
+
+    // 阶段 6：DAG 按节点装配授权 MCP 工具
+    // - agent 节点声明的工具名若是 mcp__ 前缀，必须落在该节点的授权清单里，否则该工具不可见
+    // - tool 节点直调 mcp__ 工具同样走授权清单过滤，未授权时写入拒绝文本而非执行
+    if (this.mcpToolProvider) {
+      const agentNodeNames = Array.from(
+        new Set(workflow.nodes.filter((n) => n.type === 'agent').map((n) => n.name)),
+      );
+      for (const agentName of agentNodeNames) {
+        try {
+          const mcpTools = await this.mcpToolProvider.buildAuthorizedTools({
+            tenantId: request.tenantId,
+            agentName,
+            workflowId: request.workflowId,
+            runId: request.runId,
+          });
+          for (const tool of mcpTools) {
+            if (!toolsMap.has(tool.name)) toolsMap.set(tool.name, tool);
+          }
+        } catch (error) {
+          this.logger.warn(`MCP tools unavailable for DAG agent "${agentName}": ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
 
     const ctx: DagExecutionContext = { llm, tools: toolsMap, onEvent, threadId: request.threadId, signal: request.signal };
     const graph = this.dagEngine.compile(workflow.nodes, workflow.edges, ctx);

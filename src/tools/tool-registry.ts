@@ -116,9 +116,10 @@ export class ToolRegistry {
   }
 
   /**
-   * 阶段 2 预留的统一入口：按上下文返回可用工具。
-   * 当前阶段 3 的 DB/授权未落地，context 仅做透传校验；
-   * 阶段 6 会在此处执行租户/Server/工具/策略四层过滤。
+   * 统一入口（兼容保留）：返回内置 + 已注册工具。
+   * 阶段 6 说明：按请求的授权过滤不在此处做（本类无 DB 访问）。
+   * 按 Run 的最终权限过滤由 McpToolProvider.buildAuthorizedTools 完成，
+   * 调用入口二次校验由 McpAuthorizationService.checkToolCall 完成。
    */
   getAvailableTools(context?: {
     tenantId?: string;

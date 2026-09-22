@@ -4,6 +4,15 @@ function getToken(): string | null {
   return localStorage.getItem("token");
 }
 
+/** 401 时统一登出并跳登录：清本地凭证 + 通知 AuthContext + 跳转 */
+export function handleUnauthorized() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  if (!window.location.pathname.startsWith("/login")) {
+    window.location.href = "/login";
+  }
+}
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -13,6 +22,10 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${BASE}${url}`, { ...options, headers });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("登录已过期，请重新登录");
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message || res.statusText);
@@ -105,6 +118,10 @@ export function streamChat(
     signal: controller.signal,
   })
     .then((res) => {
+      if (res.status === 401) {
+        handleUnauthorized();
+        throw new Error("登录已过期，请重新登录");
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No readable stream");
@@ -220,6 +237,63 @@ export const workflowApi = {
   delete: (id: string) => request<{ success: boolean }>(`/workflows/${id}`, { method: "DELETE" }),
 };
 
+// MCP servers
+export interface McpServer {
+  id: string;
+  tenantId: string;
+  name: string;
+  alias: string;
+  url: string;
+  headers: { configured: boolean; keys: string[] };
+  connectionTimeoutMs: number | null;
+  toolCallTimeoutMs: number | null;
+  enabled: boolean;
+  status: 'pending' | 'healthy' | 'unhealthy' | 'disabled';
+  lastConnectedAt: string | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  configVersion: number;
+  toolCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface McpTool {
+  id: string;
+  serverId: string;
+  name: string;
+  qualifiedName: string;
+  description: string | null;
+  inputSchema: Record<string, unknown> | null;
+  enabled: boolean;
+  schemaHash: string | null;
+  stale: boolean;
+  lastSeenAt: string | null;
+}
+
+export const mcpApi = {
+  list: () => request<McpServer[]>('/mcp/servers'),
+  get: (id: string) => request<McpServer>(`/mcp/servers/${id}`),
+  create: (data: { name: string; alias: string; url: string; headers?: Record<string, string>; connectionTimeoutMs?: number; toolCallTimeoutMs?: number }) =>
+    request<McpServer>('/mcp/servers', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: { name?: string; url?: string; headers?: Record<string, string>; connectionTimeoutMs?: number | null; toolCallTimeoutMs?: number | null }) =>
+    request<McpServer>(`/mcp/servers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  remove: (id: string) => request<{ success: boolean }>(`/mcp/servers/${id}`, { method: 'DELETE' }),
+  test: (id: string) => request<{ tools: string[]; durationMs: number; truncated?: boolean }>(`/mcp/servers/${id}/test`, { method: 'POST' }),
+  refresh: (id: string) =>
+    request<{ added: number; updated: number; stale: number; total: number; truncated?: boolean }>(`/mcp/servers/${id}/refresh-tools`, { method: 'POST' }),
+  enable: (id: string) => request<McpServer>(`/mcp/servers/${id}/enable`, { method: 'POST' }),
+  disable: (id: string) => request<McpServer>(`/mcp/servers/${id}/disable`, { method: 'POST' }),
+  tools: (id: string) => request<McpTool[]>(`/mcp/servers/${id}/tools`),
+  health: (id: string) => request<{ status: string; server?: McpServer }>(`/mcp/servers/${id}/health`, { method: 'POST' }),
+  setToolEnabled: (toolId: string, enabled: boolean) =>
+    request<McpTool>(`/mcp/tools/${toolId}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+  agentGrants: (agentName: string) =>
+    request<{ agentName: string; granted: string[] }>(`/mcp/agents/${agentName}/grants`),
+  setAgentGrants: (agentName: string, qualifiedNames: string[]) =>
+    request<{ agentName: string; granted: number }>(`/mcp/agents/${agentName}/grants`, { method: 'PUT', body: JSON.stringify({ qualifiedNames }) }),
+};
+
 // Knowledge bases
 export interface KnowledgeBase {
   id: string;
@@ -273,6 +347,10 @@ export const kbApi = {
       body: formData,
     });
     if (!res.ok) {
+      if (res.status === 401) {
+        handleUnauthorized();
+        throw new Error("登录已过期，请重新登录");
+      }
       const err = await res.json().catch(() => ({ message: res.statusText }));
       throw new Error(err.message || res.statusText);
     }
@@ -293,6 +371,10 @@ export const kbApi = {
       body: formData,
     });
     if (!res.ok) {
+      if (res.status === 401) {
+        handleUnauthorized();
+        throw new Error("登录已过期，请重新登录");
+      }
       const err = await res.json().catch(() => ({ message: res.statusText }));
       throw new Error(err.message || res.statusText);
     }

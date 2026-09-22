@@ -20,6 +20,7 @@ import { KnowledgeBase } from './entities/knowledge-base.entity';
 import { Workflow } from './entities/workflow.entity';
 import { McpServer } from './entities/mcp-server.entity';
 import { McpTool } from './entities/mcp-tool.entity';
+import { McpAgentGrant } from './entities/mcp-agent-grant.entity';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { McpTool } from './entities/mcp-tool.entity';
           Workflow,
           McpServer,
           McpTool,
+          McpAgentGrant,
         ],
         synchronize: config.get('NODE_ENV') !== 'production',
         logging: config.get('NODE_ENV') === 'development',

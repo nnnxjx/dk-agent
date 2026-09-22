@@ -73,7 +73,12 @@ export class DagEngine {
         } else if (node.type === 'tool') {
           const tool = ctx.tools.get(node.config.toolName);
           if (!tool) {
-            this.logger.warn(`Tool "${node.config.toolName}" not found for node "${node.name}", skipping`);
+            // 阶段 6：未授权/不存在的工具（含伪造的 mcp__ 工具名）拒绝执行并写入原因
+            const denied = typeof node.config.toolName === 'string' && node.config.toolName.startsWith('mcp__')
+              ? `[Tool ${node.name} denied]: MCP tool "${node.config.toolName}" is not authorized for this run`
+              : `[Tool ${node.name} skipped]: tool "${node.config.toolName}" not found`;
+            this.logger.warn(denied);
+            result = { messages: [...state.messages, new HumanMessage(denied)] };
           } else {
             const output = await tool.invoke(JSON.stringify(node.config.input || {}), { ...(ctx.signal ? { signal: ctx.signal } : {}) });
             result = { messages: [...state.messages, new HumanMessage(`[Tool ${node.name}]: ${output}`)] };

@@ -6,6 +6,7 @@ import LoginPage from "@/pages/LoginPage";
 import ChatPage from "@/pages/ChatPage";
 import WorkflowPage from "@/pages/WorkflowPage";
 import KnowledgePage from "@/pages/KnowledgePage";
+import McpPage from "@/pages/McpPage";
 import { ReactNode } from "react";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="/" element={<ChatPage />} />
         <Route path="/workflows" element={<WorkflowPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />
+        <Route path="/mcp" element={<McpPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
