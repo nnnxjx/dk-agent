@@ -261,6 +261,7 @@ export class AgentService {
 
           // 结构化工具调用 chunk（OpenAI 等标准模型）
           if (chunk.tool_call_chunks?.length > 0) {
+            // console.log('on_chat_model_stream', data);
             // 工具调用开始 → 丢弃子 agent 之前暂存的"思考"文本
             if (effectiveNode && parentNode && langgraphNode !== parentNode) {
               pendingTextPerNode.delete(effectiveNode);
@@ -270,7 +271,7 @@ export class AgentService {
             if (effectiveNode) nodeHasToolCall.add(effectiveNode);
 
             for (const tc of chunk.tool_call_chunks) {
-              const toolCallId = tc.id || '';
+              const toolCallId = tc.id||'';
               if (toolCallId && !emittedToolCalls.has(toolCallId)) {
                 emittedToolCalls.add(toolCallId);
                 onEvent({
@@ -280,7 +281,7 @@ export class AgentService {
                   parentMessageId: genId(),
                 });
               }
-              if (toolCallId && tc.args) {
+              if (tc.args) {
                 onEvent({ type: EventType.TOOL_CALL_ARGS, toolCallId, delta: tc.args });
               }
             }
@@ -330,7 +331,6 @@ export class AgentService {
         // ── LLM 调用结束 ──
         if (eventName === 'on_chat_model_end' && data.output) {
           if (langgraphNode === 'supervisor' || effectiveNode === 'supervisor') continue;
-
           // 刷出剩余文本缓冲区
           flushTextBuffer();
           inToolCall = false;
@@ -339,6 +339,7 @@ export class AgentService {
 
           // 结束工具调用
           if (output.tool_calls?.length > 0) {
+            // console.log('on_chat_model_end',data)
             for (const tc of output.tool_calls) {
               const toolCallId = tc.id || '';
               if (toolCallId && emittedToolCalls.has(toolCallId) && !emittedToolEnds.has(toolCallId)) {
@@ -346,6 +347,8 @@ export class AgentService {
                 onEvent({ type: EventType.TOOL_CALL_END, toolCallId });
               }
             }
+            emittedToolCalls.clear();
+            emittedToolEnds.clear();
           }
 
           // 结束文本消息
@@ -357,9 +360,11 @@ export class AgentService {
 
         // ── 工具执行结果 ──
         if (eventName === 'on_tool_end' && data.output) {
-          const toolCallId = metadata?.langgraph_tool_call_id || genId();
+          // console.log('on_tool_end', data);
+          const toolCallId = data.tool_call_id || genId();
           // 标记该节点的工具已执行完成，后续 LLM 输出可以正常流式发射
           if (effectiveNode) nodeToolsDone.add(effectiveNode);
+          // console.log(data)
 
           if (!emittedToolResults.has(toolCallId)) {
             emittedToolResults.add(toolCallId);

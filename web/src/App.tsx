@@ -16,7 +16,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 
 function PublicRoute({ children }: { children: ReactNode }) {
-  const { token } = useAuth();
+  const { token } = useAuth()
   if (token) return <Navigate to="/" replace />;
   return <>{children}</>;
 }

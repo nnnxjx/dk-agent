@@ -93,7 +93,7 @@ export class MilvusService implements OnModuleInit {
       data: [vector],
       limit: topK,
       output_fields: ['text', 'metadata', 'knowledge_base_id'],
-      filter,
+      filter
     });
     return result.results;
   }

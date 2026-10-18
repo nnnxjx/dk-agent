@@ -128,6 +128,7 @@ export default function ChatPage() {
           cancelled && !prev.currentText.includes("已手动停止生成")
             ? prev.currentText + CANCEL_SUFFIX
             : prev.currentText;
+        // console.log('content', content);
         const msg: Message = {
           id: prev.messageId || Date.now().toString(),
           role: "assistant",

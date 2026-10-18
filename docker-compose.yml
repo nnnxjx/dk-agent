@@ -93,8 +93,8 @@ services:
       - minio
 
 volumes:
-  mysql_data:
-  redis_data:
-  etcd_data:
-  minio_data:
-  milvus_data:
+  mysql_data: ./mysql_data
+  redis_data: ./redis_data
+  etcd_data: ./etcd_data
+  minio_data: ./minio_data
+  milvus_data: ./milvus_data
