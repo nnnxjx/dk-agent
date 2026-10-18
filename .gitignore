@@ -5,3 +5,4 @@ dist
 .playwright-mcp
 coverage
 *.log
+reports/rag-baseline/

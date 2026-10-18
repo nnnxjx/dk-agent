@@ -1,0 +1,7 @@
+{"id":"semantic-01","category":"同义改写","tenantId":"","knowledgeBaseId":"","query":"","relevantChunkIds":[],"noAnswer":false,"labelStatus":"todo"}
+{"id":"domain-01","category":"中文领域术语","tenantId":"","knowledgeBaseId":"","query":"","relevantChunkIds":[],"noAnswer":false,"labelStatus":"todo"}
+{"id":"mixed-01","category":"中英文混合","tenantId":"","knowledgeBaseId":"","query":"","relevantChunkIds":[],"noAnswer":false,"labelStatus":"todo"}
+{"id":"error-code-01","category":"错误码","tenantId":"","knowledgeBaseId":"","query":"","relevantChunkIds":[],"noAnswer":false,"labelStatus":"todo"}
+{"id":"api-path-01","category":"接口路径","tenantId":"","knowledgeBaseId":"","query":"","relevantChunkIds":[],"noAnswer":false,"labelStatus":"todo"}
+{"id":"version-01","category":"版本号","tenantId":"","knowledgeBaseId":"","query":"","relevantChunkIds":[],"noAnswer":false,"labelStatus":"todo"}
+{"id":"no-answer-01","category":"无答案","tenantId":"","knowledgeBaseId":"","query":"","relevantChunkIds":[],"noAnswer":true,"labelStatus":"todo"}
