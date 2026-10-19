@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Logger } from '@nestjs/common';
 import { RagService } from '../rag/rag.service';
+import type { RetrievalMode } from '../rag/retrieval-mode';
 
 const logger = new Logger('RagRetrievalTool');
 
@@ -9,7 +10,7 @@ const logger = new Logger('RagRetrievalTool');
  * RAG 知识库检索工具（工厂函数）
  * 接收 RagService 和 tenantId，在对话时按租户检索所有知识库
  */
-export function createRagRetrievalTool(ragService: RagService, tenantId: string) {
+export function createRagRetrievalTool(ragService: RagService, tenantId: string, retrievalMode?: RetrievalMode) {
   return tool(
     async (input: { query: string; topK?: number }) => {
       try {
@@ -21,7 +22,7 @@ export function createRagRetrievalTool(ragService: RagService, tenantId: string)
         const allResults: any[] = [];
         for (const kb of knowledgeBases) {
           try {
-            const results = await ragService.search(kb.id, tenantId, input.query, input.topK || 3);
+            const results = await ragService.search(kb.id, tenantId, input.query, input.topK || 3, retrievalMode);
             allResults.push(
               ...results.map((r: any) => ({ ...r, knowledgeBaseName: kb.name })),
             );

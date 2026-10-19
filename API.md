@@ -70,6 +70,7 @@ POST /api/v1/chat/completions
 | message | string | 是 | 用户消息 |
 | conversationId | string(uuid) | 否 | 会话 ID，不传则自动创建 |
 | workflowId | string(uuid) | 否 | 工作流 ID，传入则走 DAG 编排模式 |
+| retrievalMode | string | 否 | 本次对话中知识库检索模式：`dense_v2` / `bm25` / `hybrid`，默认 `dense_v2` |
 | llmOptions | object | 否 | LLM 参数 |
 | llmOptions.provider | string | 否 | `openai` / `anthropic` / `dashscope` |
 | llmOptions.model | string | 否 | 模型名称 |
@@ -293,12 +294,13 @@ POST /api/v1/knowledge-bases/:id/search
 |------|------|------|------|
 | query | string | 是 | 查询文本 |
 | topK | number | 否 | 返回条数，默认 5 |
+| retrievalMode | string | 否 | `dense_v2` / `bm25` / `hybrid`，默认 `dense_v2` |
 
 **响应：**
 
 ```json
 [
-  { "text": "匹配的文本片段...", "metadata": {}, "score": 0.92 }
+  { "id": "chunk-id", "text": "匹配的文本片段...", "metadata": {}, "score": 0.92, "retrievalMode": "dense_v2", "knowledgeBaseId": "knowledge-base-id" }
 ]
 ```
 

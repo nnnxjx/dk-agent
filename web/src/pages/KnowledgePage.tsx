@@ -25,7 +25,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { kbApi, KnowledgeBase } from "@/lib/api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { kbApi, KnowledgeBase, type RetrievalMode } from "@/lib/api";
 import {
   Plus,
   Trash2,
@@ -117,13 +118,16 @@ function KBCard({
     { text: string; score: number }[]
   >([]);
   const [searching, setSearching] = useState(false);
+  const [retrievalMode, setRetrievalMode] = useState<RetrievalMode | "default">("default");
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
-      const results = await kbApi.search(kb.id, searchQuery);
+      const results = await kbApi.search(
+        kb.id, searchQuery, undefined, retrievalMode === "default" ? undefined : retrievalMode,
+      );
       setSearchResults(results);
     } catch (e) {
       console.error("检索失败", e);
@@ -189,6 +193,17 @@ function KBCard({
             )}
           </Button>
         </div>
+        <Select value={retrievalMode} onValueChange={(value) => setRetrievalMode(value as RetrievalMode | "default")}>
+          <SelectTrigger className="h-8 w-full text-xs" aria-label="知识库检索模式">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">默认 Dense</SelectItem>
+            <SelectItem value="dense_v2">Dense</SelectItem>
+            <SelectItem value="bm25">BM25</SelectItem>
+            <SelectItem value="hybrid">Hybrid</SelectItem>
+          </SelectContent>
+        </Select>
 
         {searchResults.length > 0 && (
           <div className="space-y-2">

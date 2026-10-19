@@ -89,6 +89,8 @@ export interface StreamChatCallbacks {
   onAbort?: () => void;
 }
 
+export type RetrievalMode = "dense_v2" | "bm25" | "hybrid";
+
 /** 中断 partial 落库后缀（与后端 CANCEL_SUFFIX 保持一致） */
 export const CANCEL_SUFFIX = "\n\n> ⏹ 已手动停止生成";
 
@@ -97,6 +99,7 @@ export function streamChat(
     message: string;
     conversationId?: string;
     workflowId?: string;
+    retrievalMode?: RetrievalMode;
     llmOptions?: { provider?: string; model?: string; temperature?: number };
   },
   onEvent: (event: string, data: Record<string, unknown>) => void,
@@ -390,10 +393,10 @@ export const kbApi = {
       body: JSON.stringify({ url }),
     }),
 
-  search: (id: string, query: string, topK?: number) =>
-    request<{ text: string; metadata: Record<string, unknown>; score: number }[]>(
+  search: (id: string, query: string, topK?: number, retrievalMode?: RetrievalMode) =>
+    request<{ text: string; metadata: Record<string, unknown>; score: number; retrievalMode: RetrievalMode }[]>(
       `/knowledge-bases/${id}/search`,
-      { method: "POST", body: JSON.stringify({ query, topK }) },
+      { method: "POST", body: JSON.stringify({ query, topK, retrievalMode }) },
     ),
   delete: (id: string) => request<{ success: boolean }>(`/knowledge-bases/${id}`, { method: "DELETE" }),
 };

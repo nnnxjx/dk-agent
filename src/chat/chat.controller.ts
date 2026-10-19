@@ -1,5 +1,6 @@
 import {
   Controller,
+  BadRequestException,
   Post,
   Get,
   Delete,
@@ -21,11 +22,13 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { TenantId } from '../common/decorators/tenant.decorator';
 import { AGUIEvent, EventType, serializeEvent, genId } from '../common/interfaces/ag-ui-events';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { RetrievalModeSchema } from '../rag/retrieval-mode';
 
 const ChatRequestSchema = z.object({
   message: z.string().min(1),
   conversationId: z.string().uuid().optional(),
   workflowId: z.string().uuid().optional(),
+  retrievalMode: RetrievalModeSchema.optional(),
   llmOptions: z
     .object({
       provider: z.enum(['openai', 'anthropic', 'dashscope']).optional(),
@@ -75,7 +78,11 @@ export class ChatController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const dto = ChatRequestSchema.parse(body);
+    const parsed = ChatRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid chat request or retrievalMode');
+    }
+    const dto = parsed.data;
 
     // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -159,6 +166,7 @@ export class ChatController {
         messages,
         workflowId: dto.workflowId,
         llmOptions: dto.llmOptions,
+        retrievalMode: dto.retrievalMode,
         tenantId,
         onEvent,
         signal,

@@ -1,5 +1,6 @@
 import {
   Controller,
+  BadRequestException,
   Post,
   Get,
   Delete,
@@ -9,6 +10,8 @@ import {
   UseInterceptors,
   UploadedFile,
   UploadedFiles,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   FileInterceptor,
@@ -19,6 +22,7 @@ import { RagService } from './rag.service';
 import { DocumentLoaderService } from './document-loader.service';
 import { JwtAuthGuard, TenantGuard } from '../auth/guards';
 import { TenantId } from '../common/decorators/tenant.decorator';
+import { RetrievalModeSchema } from './retrieval-mode';
 
 const CreateKBSchema = z.object({
   name: z.string().min(1),
@@ -39,6 +43,7 @@ const AddDocsSchema = z.object({
 const SearchSchema = z.object({
   query: z.string().min(1),
   topK: z.number().optional().default(5),
+  retrievalMode: RetrievalModeSchema.optional(),
 });
 
 const LoadUrlSchema = z.object({
@@ -94,23 +99,27 @@ export class RagController {
       throw new Error('未选择文件');
     }
 
-    const docs = await this.documentLoaderService.loadFile(
-      file.buffer,
-      file.originalname,
-      file.mimetype,
-    );
+    try{
+      const docs = await this.documentLoaderService.loadFile(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+      );
+  
+      const result = await this.ragService.addDocuments(
+        id,
+        tenantId,
+        docs.map((d) => ({ content: d.content, metadata: d.metadata })),
+      );
 
-    const result = await this.ragService.addDocuments(
-      id,
-      tenantId,
-      docs.map((d) => ({ content: d.content, metadata: d.metadata })),
-    );
-
-    return {
-      ...result,
-      fileName: file.originalname,
-      documentsLoaded: docs.length,
-    };
+      return {
+        ...result,
+        fileName: file.originalname,
+        documentsLoaded: docs.length,
+      };
+    }catch(err: any){
+      throw new HttpException(err.message, HttpStatus.BAD_REQUEST);
+    }
   }
 
   /**
@@ -197,8 +206,12 @@ export class RagController {
     @Body() body: any,
     @TenantId() tenantId: string,
   ) {
-    const dto = SearchSchema.parse(body);
-    return this.ragService.search(id, tenantId, dto.query, dto.topK);
+    const parsed = SearchSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid query, topK, or retrievalMode');
+    }
+    const dto = parsed.data;
+    return this.ragService.search(id, tenantId, dto.query, dto.topK, dto.retrievalMode);
   }
 
   @Delete(':id')

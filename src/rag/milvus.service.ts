@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MilvusClient, DataType } from '@zilliz/milvus2-sdk-node';
+import { MilvusClient, DataType, RRFRanker } from '@zilliz/milvus2-sdk-node';
+import { hybridCollectionIndexes, hybridCollectionSchema } from './hybrid-collection.schema';
 
 const EMBEDDING_DIM = 1024; // BAAI/bge-m3 default
 
@@ -73,6 +74,110 @@ export class MilvusService implements OnModuleInit {
 
     await client.loadCollection({ collection_name: collectionName });
     this.logger.log(`Collection ${collectionName} created and loaded`);
+  }
+
+  /** 创建新版 Dense + BM25 集合。不会触碰旧集合或旧数据卷。 */
+  async createHybridCollection(collectionName: string) {
+    const client = this.requireClient();
+    const exists = await client.hasCollection({ collection_name: collectionName });
+    if (exists.value) {
+      throw new Error(`Hybrid collection ${collectionName} already exists; refusing to reuse an unknown schema`);
+    }
+
+    const version = (await client.getVersion()).version;
+    if (!version?.startsWith('2.6.')) {
+      throw new Error(`Hybrid collection requires Milvus 2.6.x; connected to ${version}`);
+    }
+
+    const created = await client.createCollection(hybridCollectionSchema(collectionName));
+    this.assertMilvusSuccess(created, 'create hybrid collection');
+    for (const index of hybridCollectionIndexes(collectionName)) {
+      this.assertMilvusSuccess(await client.createIndex(index), `create ${index.field_name} index`);
+    }
+    this.assertMilvusSuccess(
+      await client.loadCollectionSync({ collection_name: collectionName }),
+      'load hybrid collection',
+    );
+    this.logger.log(`Hybrid collection ${collectionName} created and loaded`);
+  }
+
+  async insertHybridChunks(
+    collectionName: string,
+    data: Array<{
+      id: string;
+      text: string;
+      dense_vector: number[];
+      metadata: Record<string, unknown>;
+      knowledge_base_id: string;
+    }>,
+  ) {
+    if (data.some((chunk) => chunk.dense_vector.length !== EMBEDDING_DIM)) {
+      throw new Error(`Hybrid chunks must use ${EMBEDDING_DIM}-dimensional dense vectors`);
+    }
+    const result = await this.requireClient().insert({ collection_name: collectionName, data });
+    this.assertMilvusSuccess(result, 'insert hybrid chunks');
+    return result;
+  }
+
+  async searchDenseV2(collectionName: string, vector: number[], topK = 5, filter?: string) {
+    if (vector.length !== EMBEDDING_DIM) {
+      throw new Error(`Hybrid dense query must use ${EMBEDDING_DIM}-dimensional vector`);
+    }
+    const result = await this.requireClient().search({
+      collection_name: collectionName,
+      anns_field: 'dense_vector',
+      data: vector,
+      limit: topK,
+      output_fields: ['id', 'text', 'metadata', 'knowledge_base_id'],
+      filter,
+    });
+    this.assertMilvusSuccess(result, 'search hybrid dense');
+    return result.results;
+  }
+
+  async searchBm25V2(collectionName: string, query: string, topK = 5, filter?: string) {
+    const result = await this.requireClient().search({
+      collection_name: collectionName,
+      anns_field: 'sparse_vector',
+      data: query,
+      limit: topK,
+      output_fields: ['id', 'text', 'metadata', 'knowledge_base_id'],
+      filter,
+    });
+    this.assertMilvusSuccess(result, 'search hybrid BM25');
+    return result.results;
+  }
+
+  async searchHybridV2(
+    collectionName: string,
+    vector: number[],
+    query: string,
+    topK = 5,
+    filter?: string,
+  ) {
+    if (vector.length !== EMBEDDING_DIM) {
+      throw new Error(`Hybrid dense query must use ${EMBEDDING_DIM}-dimensional vector`);
+    }
+    const candidateK = Math.max(topK, 20);
+    const result = await this.requireClient().hybridSearch({
+      collection_name: collectionName,
+      data: [
+        { anns_field: 'dense_vector', data: vector, expr: filter },
+        { anns_field: 'sparse_vector', data: query, expr: filter },
+      ],
+      rerank: RRFRanker(60),
+      limit: candidateK,
+      output_fields: ['id', 'text', 'metadata', 'knowledge_base_id'],
+    });
+    this.assertMilvusSuccess(result, 'search hybrid RRF');
+    return result.results.slice(0, topK);
+  }
+
+  private assertMilvusSuccess(result: any, operation: string) {
+    const status = result?.status ?? result;
+    if (status?.error_code !== 'Success') {
+      throw new Error(`${operation} failed: ${status?.reason || JSON.stringify(status)}`);
+    }
   }
 
   async insert(

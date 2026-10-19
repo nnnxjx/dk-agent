@@ -302,9 +302,10 @@ async function evaluate(args, cases) {
         const embedded = performance.now();
         const response = await client.search({
           collection_name: kbRows[0].collectionName,
-          data: [vector],
+          anns_field: 'dense_vector',
+          data: vector,
           limit: args.topK,
-          output_fields: ['text', 'metadata', 'knowledge_base_id'],
+          output_fields: ['id', 'text', 'metadata', 'knowledge_base_id'],
           filter: `knowledge_base_id == "${item.knowledgeBaseId.replace(/[^a-zA-Z0-9-]/g, '')}"`,
         });
         const searched = performance.now();
@@ -329,7 +330,7 @@ async function evaluate(args, cases) {
     }
     const report = {
       generatedAt: new Date().toISOString(),
-      mode: 'dense_legacy',
+      mode: 'dense_v2',
       milvusVersion: version.version,
       sdkVersion: JSON.parse(await readFile(resolve('node_modules/@zilliz/milvus2-sdk-node/package.json'), 'utf8')).version,
       embeddingModel: 'BAAI/bge-m3',
@@ -339,7 +340,7 @@ async function evaluate(args, cases) {
       metrics: summarizeEvaluation(rows, args.topK),
       results: rows,
     };
-    await writeReport(args.out, 'dense-baseline', report);
+    await writeReport(args.out, 'dense-v2-baseline', report);
     console.log(JSON.stringify(report.metrics, null, 2));
     if (report.metrics.failedCount) process.exitCode = 1;
   } finally {

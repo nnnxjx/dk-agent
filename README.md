@@ -32,7 +32,7 @@
 - 多格式文档加载：PDF（pdf-parse）、TXT、MD、CSV、HTML、JSON 文件上传，支持 URL 网页抓取（cheerio）
 - 文档分块（RecursiveCharacterTextSplitter）
 - BAAI/bge-m3 Embedding 向量化（1024 维，通过 OpenAI 兼容 API）
-- Milvus 向量检索（IVF_FLAT + COSINE）
+- Milvus 2.6.24 Dense + BM25 + RRF 混合检索（默认 Dense，支持配置切换）
 - 按租户隔离的知识库管理
 - 支持单文件上传、批量上传（最多 10 个）、URL 网页加载、JSON 批量导入
 
@@ -93,7 +93,7 @@ JWT 认证 + TenantGuard，所有数据按 tenantId 隔离。
 | Agent 编排 | LangChain + LangGraph |
 | 数据库 | MySQL 8.0 (TypeORM) |
 | 缓存 | Redis 7 (ioredis) |
-| 向量库 | Milvus 2.3 |
+| 向量库 | Milvus 2.6.24 |
 | 文档加载 | pdf-parse + cheerio |
 | 认证 | Passport JWT |
 | 参数校验 | Zod |
@@ -109,7 +109,7 @@ JWT 认证 + TenantGuard，所有数据按 tenantId 隔离。
 - Node.js 18+
 - MySQL 8.0
 - Redis 7
-- Milvus 2.3（可选，RAG 功能需要）
+- Milvus 2.6.24（可选，RAG 功能需要）
 
 ### Docker 一键启动（生产模式）
 
@@ -119,6 +119,8 @@ docker-compose up -d
 ```
 
 会启动 MySQL、Redis、Milvus 及应用本身（前后端一体，端口 3000）。
+
+当前 Compose 会为新版 Milvus、etcd、MinIO 创建**新命名卷**，不会复用旧 2.3 数据。应用默认所有知识库都指向当前 Milvus 2.6 的 Hybrid Collection，不再维护 Schema 版本字段。若 MySQL 仍有指向旧实例的知识库记录，请先核对并重建这些知识库、重新上传原始文档；否则访问不存在的 Collection 会失败。不要未经核对直接清空 MySQL 或删除旧数据卷。
 
 ### 本地开发
 
@@ -181,6 +183,8 @@ pnpm dev:web        # http://localhost:5173，自动代理 /api → localhost:30
 | | `POST /api/v1/knowledge-bases/:id/upload-batch` | 批量上传（最多 10 个） |
 | | `POST /api/v1/knowledge-bases/:id/load-url` | 加载网页内容 |
 | | `POST /api/v1/knowledge-bases/:id/search` | 语义检索 |
+
+知识库搜索和流式对话请求都可传 `retrievalMode: "dense_v2" | "bm25" | "hybrid"`。不传时默认 `dense_v2`；对话中的 Agent 检索工具沿用本次请求的模式。前端两个页面均可选择模式，无需设置环境变量。
 
 完整 API 文档见 [API.md](./API.md)，架构设计见 [架构.md](./架构.md)。
 

@@ -6,6 +6,7 @@ import { DagEngine, DagExecutionContext } from './dag-engine';
 import { WorkflowService } from './workflow.service';
 import { RagService } from '../rag/rag.service';
 import { createRagRetrievalTool } from '../tools/rag-retrieval.tool';
+import type { RetrievalMode } from '../rag/retrieval-mode';
 import { McpToolProvider } from '../mcp/mcp-tool.provider';
 import { AGUIEvent, EventType, genId } from '../common/interfaces/ag-ui-events';
 import { HumanMessage, SystemMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
@@ -16,6 +17,7 @@ export interface OrchestrationRequest {
   messages: Array<{ role: string; content: string }>;
   workflowId?: string;
   llmOptions?: LLMOptions;
+  retrievalMode?: RetrievalMode;
   tenantId: string;
   onEvent: (event: AGUIEvent) => void;
   /** 取消信号：transport 中断（req close）或显式 DELETE /runs/:runId 触发 */
@@ -91,7 +93,7 @@ export class AgentService {
     const llm = this.llmService.createModel({ ...request.llmOptions, streaming: true });
 
     // 动态创建带 tenantId 的 rag_retrieval 工具
-    const ragTool = createRagRetrievalTool(this.ragService, request.tenantId);
+    const ragTool = createRagRetrievalTool(this.ragService, request.tenantId, request.retrievalMode);
 
     const agentDefs: AgentDefinition[] = [];
     for (const def of this.defaultAgents) {
@@ -133,6 +135,7 @@ export class AgentService {
 
     const llm = this.llmService.createModel({ ...request.llmOptions, streaming: true });
     const toolsMap = new Map(this.toolRegistry.getAll().map((t) => [t.name, t]));
+    toolsMap.set('rag_retrieval', createRagRetrievalTool(this.ragService, request.tenantId, request.retrievalMode));
 
     // 阶段 6：DAG 按节点装配授权 MCP 工具
     // - agent 节点声明的工具名若是 mcp__ 前缀，必须落在该节点的授权清单里，否则该工具不可见

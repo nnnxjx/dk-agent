@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,6 +7,13 @@ import { MilvusService } from './milvus.service';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { ConfigService } from '@nestjs/config';
+import { z } from 'zod';
+import { DEFAULT_RETRIEVAL_MODE, RetrievalMode, RetrievalModeSchema } from './retrieval-mode';
+
+const SearchInputSchema = z.object({
+  query: z.string().trim().min(1).max(2048),
+  topK: z.number().int().min(1).max(20),
+});
 
 @Injectable()
 export class RagService {
@@ -19,7 +26,7 @@ export class RagService {
     private readonly milvusService: MilvusService,
     private readonly configService: ConfigService,
   ) {
-    const apiKey = this.configService.get('llm.openai.apiKey');
+    const apiKey = "sk-uuouioqjnijgvtzgdraxdcwsmsitqfgrdhyyrocjscncygmx";
     const baseUrl = this.configService.get('llm.openai.baseUrl');
 
     this.embeddings = new OpenAIEmbeddings({
@@ -38,9 +45,9 @@ export class RagService {
     tenantId: string,
     options?: { chunkSize?: number; chunkOverlap?: number; embeddingModel?: string },
   ) {
-    const collectionName = `kb_${tenantId}_${Date.now()}`.replace(/-/g, '_');
+    const collectionName = `kb_${uuidv4().replace(/-/g, '')}`;
 
-    await this.milvusService.createCollection(collectionName);
+    await this.milvusService.createHybridCollection(collectionName);
 
     const kb = this.kbRepo.create({
       name,
@@ -76,7 +83,7 @@ export class RagService {
     const allChunks: Array<{
       id: string;
       text: string;
-      vector: number[];
+      dense_vector: number[];
       metadata: any;
       knowledge_base_id: string;
     }> = [];
@@ -90,7 +97,7 @@ export class RagService {
         allChunks.push({
           id: uuidv4(),
           text: chunks[i],
-          vector: vectors[i],
+          dense_vector: vectors[i],
           metadata: { ...doc.metadata, chunkIndex: i },
           knowledge_base_id: knowledgeBaseId,
         });
@@ -98,7 +105,7 @@ export class RagService {
     }
 
     if (allChunks.length > 0) {
-      await this.milvusService.insert(kb.collectionName, allChunks);
+      await this.milvusService.insertHybridChunks(kb.collectionName, allChunks);
       await this.kbRepo.update(kb.id, {
         documentCount: kb.documentCount + documents.length,
       });
@@ -119,27 +126,44 @@ export class RagService {
     tenantId: string,
     query: string,
     topK = 5,
+    retrievalMode?: RetrievalMode,
   ) {
     const kb = await this.kbRepo.findOne({
       where: { id: knowledgeBaseId, tenantId },
     });
     if (!kb) throw new NotFoundException('Knowledge base not found');
 
-    const queryVector = await this.embeddings.embedQuery(query);
+    const parsed = SearchInputSchema.safeParse({ query, topK });
+    if (!parsed.success) {
+      throw new BadRequestException('Query must be 1-2048 characters and topK must be an integer from 1 to 20');
+    }
+    const mode = RetrievalModeSchema.safeParse(retrievalMode ?? DEFAULT_RETRIEVAL_MODE);
+    if (!mode.success) {
+      throw new BadRequestException('retrievalMode must be dense_v2, bm25, or hybrid');
+    }
 
     // 防止 filter 注入：只允许合法的 UUID 字符
     const safeId = knowledgeBaseId.replace(/[^a-zA-Z0-9-]/g, '');
-    const results = await this.milvusService.search(
-      kb.collectionName,
-      queryVector,
-      topK,
-      `knowledge_base_id == "${safeId}"`,
-    );
+    const filter = `knowledge_base_id == "${safeId}"`;
+    const queryText = parsed.data.query;
+    const limit = parsed.data.topK;
+    let results: any[];
+    if (mode.data === 'bm25') {
+      results = await this.milvusService.searchBm25V2(kb.collectionName, queryText, limit, filter);
+    } else {
+      const queryVector = await this.embeddings.embedQuery(queryText);
+      results = mode.data === 'hybrid'
+        ? await this.milvusService.searchHybridV2(kb.collectionName, queryVector, queryText, limit, filter)
+        : await this.milvusService.searchDenseV2(kb.collectionName, queryVector, limit, filter);
+    }
 
     return results.map((r: any) => ({
+      id: r.id,
       text: r.text,
       metadata: r.metadata,
       score: r.score,
+      retrievalMode: mode.data,
+      knowledgeBaseId,
     }));
   }
 
@@ -154,4 +178,5 @@ export class RagService {
     await this.milvusService.dropCollection(kb.collectionName);
     await this.kbRepo.delete(id);
   }
+
 }

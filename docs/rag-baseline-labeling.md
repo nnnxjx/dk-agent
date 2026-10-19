@@ -1,6 +1,6 @@
 # RAG Dense 基线标注与运行说明
 
-本说明配合 [混合检索改造计划](rag-hybrid-search-plan.md) 的步骤 0 使用。`scripts/rag/baseline.mjs` 只读取现有 MySQL、Milvus 和 Embedding API，不会修改知识库。评估输出包含问题、租户与知识库 ID；默认写入被 Git 忽略的 `reports/rag-baseline/`，不要将含敏感内容的报告提交到仓库。
+本说明配合 [混合检索改造计划](rag-hybrid-search-plan.md) 的步骤 0 使用。旧 Milvus 数据不迁移；先在新版 Schema v2 知识库重新上传固定文档集，再标注问题。`scripts/rag/baseline.mjs` 只读取 MySQL、Milvus 和 Embedding API，不会修改知识库。评估输出包含问题、租户与知识库 ID；默认写入被 Git 忽略的 `reports/rag-baseline/`，不要将含敏感内容的报告提交到仓库。
 
 ## 1. 启动与盘点
 
@@ -31,13 +31,13 @@ node --env-file=.env scripts/rag/baseline.mjs inventory
 node --env-file=.env scripts/rag/baseline.mjs validate --dataset datasets/rag-baseline.jsonl
 ```
 
-## 3. 跑现有 Dense 基线
+## 3. 跑新版 Dense 基线
 
 ```powershell
 node --env-file=.env scripts/rag/baseline.mjs evaluate --dataset datasets/rag-baseline.jsonl --top-k 5
 ```
 
-脚本沿用项目现有 BGE-M3 查询向量、Milvus `search()` 与 `knowledge_base_id` 过滤条件，记录每题返回的 Chunk ID、排序、分数、Embedding 耗时、Milvus 耗时及错误，并计算：
+脚本以 BGE-M3 查询向量搜索当前集合的 `dense_vector`，带 `knowledge_base_id` 过滤条件，并显式返回 `id`；默认标注的知识库都已在 Milvus 2.6 重建并重新上传文档。记录每题返回的 Chunk ID、排序、分数、Embedding 耗时、Milvus 耗时及错误，并计算：
 
 - Recall@1、Recall@K：有答案问题中，正确 Chunk 在前 1/K 条出现的比例；失败问题按未命中计入分母。
 - MRR@K：每道有答案题的首个正确 Chunk 名次倒数的平均值，未命中记 0。

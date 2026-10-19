@@ -2,7 +2,7 @@
 
 ## 1. 目标与边界
 
-本文档规划将现有的 BGE-M3 Dense 向量检索，升级为 **Dense 向量检索 + Milvus 内置 BM25 全文检索 + RRF 排名融合**。目标是保留自然语言语义召回能力，同时改善错误码、接口名、版本号和领域专有词的精确召回。
+本文档规划将现有的 BGE-M3 Dense 向量检索，升级为 **Dense 向量检索 + Milvus 内置 BM25 全文检索 + RRF 排名融合**。目标是保留自然语言语义召回能力，同时改善错误码、接口名、版本号和领域专有词的精确召回。**项目已决定不迁移旧 Milvus 数据：新部署使用全新数据卷，新知识库重新上传文档；旧卷暂时保留，但不作为业务回滚目标。**
 
 本计划只设计与实施混合检索所必需的变更。Cross-Encoder Reranker、查询改写、共享 Collection 和完整文档管理可在这轮验收后单独推进。本文中的 `Top 20`、`Top 5` 和 `RRF k=60` 是初始实验参数，最终值以离线评估和延迟测试为准。
 
@@ -19,22 +19,22 @@ Milvus 的 BM25 Function 负责对原文分词、生成稀疏表示并维护检�
 
 | 位置 | 当前实现 | 对本次改造的影响 |
 | --- | --- | --- |
-| `docker-compose.yml` | Milvus Server `v2.3.3` | 原生 BM25 Full Text Search 需要更高版本服务端；只升级 Node SDK 不够 |
+| `docker-compose.yml` | Milvus Server `v2.3.3` | 新部署改为 2.6.24 与全新数据卷；不把旧卷直接挂到新版容器 |
 | `package.json` | `@zilliz/milvus2-sdk-node: ^2.6.0`；当前安装为 `2.6.17` | 可以基于当前 SDK 类型规划，但必须与目标服务端联调 |
-| `src/rag/milvus.service.ts` | `id/text/vector/metadata/knowledge_base_id`，`IVF_FLAT + COSINE`，只有 Dense `search()` | 需要新建包含 analyzer、BM25 Function 与双索引的 Collection；旧 Collection 不原地改造 |
-| `src/rag/rag.service.ts` | BGE-M3 生成 1024 维向量，按文档切块后写入；搜索只调用 `embedQuery()` + Dense Search | 写入字段及搜索入口需要兼容新版；保留旧路径供灰度与回滚 |
+| `src/rag/milvus.service.ts` | `id/text/vector/metadata/knowledge_base_id`，`IVF_FLAT + COSINE`，只有 Dense `search()` | 新建包含 analyzer、BM25 Function 与双索引的 Collection Schema；不用旧 Collection 数据 |
+| `src/rag/rag.service.ts` | BGE-M3 生成 1024 维向量，按文档切块后写入；搜索只调用 `embedQuery()` + Dense Search | 新知识库写入新版 Schema；保留新版集合内的 Dense Only 作为降级模式 |
 | `src/tools/rag-retrieval.tool.ts` | 按租户依次检索所有知识库，直接按 `score` 排序 | 不同知识库、不同检索模式的分数不可直接当作同一量纲比较 |
-| `src/entities/knowledge-base.entity.ts` | 记录 `collectionName`，没有索引版本/检索模式字段 | 需要能够区分旧 Collection 与新版 Collection，支持逐库切换 |
+| `src/entities/knowledge-base.entity.ts` | 只记录 `collectionName`，不维护 Schema 版本字段 | 默认所有有效知识库指向 Milvus 2.6 Hybrid Collection；旧 MySQL 记录需人工核对和重建 |
 
 Milvus 2.5 文档已提供内置 BM25 全文检索；项目目前使用的 Server 2.3.3 不具备这条链路。[Milvus 2.5 全文检索文档](https://milvus.io/docs/v2.5.x/full-text-search.md)
 
 ## 3. 实施原则与验收口径
 
-1. **旧集合保留到新链路验收结束。** 新集合使用新名字，例如 `<原collectionName>_hybrid_v2`。不要在切流量前删除旧集合或覆盖原有卷。
-2. **先建立基线，再宣称收益。** 记录 Dense Only 的 Recall@5、MRR、精确词召回率、P50/P95 检索延迟，再与 BM25 Only 和 Hybrid 对比。没有数据时只描述“增加混合检索能力”，不写“提升 X%”。
+1. **全新部署，不复用旧卷。** 新 Milvus、etcd、MinIO 使用独立命名卷；旧卷暂时保留。应用不区分知识库 Schema 版本，旧 MySQL 记录必须在使用前核对并重建。
+2. **先建立可复跑评估集，再宣称收益。** 用新上传的同一批文档比较 Dense Only、BM25 Only 和 Hybrid 的 Recall@5、MRR、精确词召回率、P50/P95。没有数据时只描述“增加混合检索能力”，不写“提升 X%”。
 3. **租户和知识库范围由服务端决定。** 继续从 `tenantId + knowledgeBaseId` 查 MySQL，并由服务端拼接/参数化 Milvus 过滤条件；客户端不直接传 Collection 名。
 4. **不混排原始分数。** Dense Cosine、BM25 和 RRF 分数含义不同。API 的 `score` 应明确为当前模式的排序分数，并增加 `retrievalMode`；跨知识库汇总另行处理。
-5. **每个阶段设通过条件。** 一旦版本、数据完整性、召回质量或延迟不达标，保持旧 Dense 路径可用。
+5. **每个阶段设通过条件。** 一旦版本、召回质量或延迟不达标，在同一新版 Collection 上切回 Dense Only；不能依赖没有同步数据的旧集合回滚。
 
 ## 4. 分步实施
 
@@ -42,9 +42,9 @@ Milvus 2.5 文档已提供内置 BM25 全文检索；项目目前使用的 Serve
 
 **要做什么**
 
-- 确认实际运行的 Milvus Server 与 SDK 版本、Collection 数量、每库 Chunk 数量、向量维度、索引状态、数据卷和依赖服务版本。
-- 整理至少 50 条带标准答案位置的测试问题，分别覆盖同义改写、中文专有名词、中英文混合、错误码、接口路径、数字版本号及无答案问题。为每题标记正确 `knowledgeBaseId` 和 Chunk ID；旧数据无文档 ID 时先用旧 Milvus 主键。
-- 用现有 Dense 路径跑一遍，保存每条问题的命中 Chunk、名次、得分、耗时与错误。记录 Recall@1/5、MRR、P50/P95、Embedding 调用耗时。
+- 确认新版 Milvus Server 与 SDK 版本、数据卷和依赖服务版本。
+- 重新上传一批固定测试文档，整理至少 50 条带标准答案位置的测试问题，分别覆盖同义改写、中文专有名词、中英文混合、错误码、接口路径、数字版本号及无答案问题。为每题标记正确 `knowledgeBaseId` 和 Chunk ID。
+- 在同一新版集合上用 Dense Only 跑基线，保存每条问题的命中 Chunk、名次、得分、耗时与错误。记录 Recall@1/5、MRR、P50/P95、Embedding 调用耗时。
 
 **为什么**
 
@@ -55,23 +55,23 @@ Milvus 2.5 文档已提供内置 BM25 全文检索；项目目前使用的 Serve
 - 一份固定的评估数据集与可复跑脚本/命令，结果按版本保存。
 - 能准确区分“问题没有相关文档”和“相关文档未被召回”。
 
-### 步骤 1：确定 Milvus 升级与迁移路径
+### 步骤 1：部署全新 Milvus 2.6 实例（不迁移旧数据）
 
 **要做什么**
 
-- 在独立测试环境部署支持 BM25 的 Milvus，目标先选与 Node SDK 联调通过的固定 2.6.x 版本，记录完整镜像标签和配套 etcd/MinIO 配置。
-- 原有 2.3.3 继续可用。备份 MySQL 知识库记录、Milvus Collection 数据及其 etcd/MinIO 依赖，实际做一次恢复演练。
-- 优先采用**新部署 + 数据复制**：在新服务上创建 Hybrid Collection，从旧服务导出 `id/text/vector/metadata/knowledge_base_id` 并写入新 Schema。这样能同时完成服务端迁移与 Schema 改造，且旧服务保留为回滚来源。
-- 如果决定原地升级，先按目标版本官方升级文档验证允许的中间版本、依赖和消息队列约束，在测试副本完整演练。不能直接假定 2.3.3 → 2.6.x 只需改 `docker-compose.yml` 镜像标签。
+- 使用固定 Milvus `2.6.24`、etcd `v3.5.25`、MinIO `RELEASE.2024-12-18T13-15-44Z`，先在隔离 Compose 项目与全新卷中完成联调。仓库当前安装的 Node SDK 为 `2.6.17`。
+- 正式开发环境也使用**新的** Milvus、etcd、MinIO 卷；不要把旧 `dk-agent_*` 卷挂到新版容器。旧卷暂时不删除，方便发现误判时人工核查。
+- 不执行 2.3.3 原地升级、数据导出复制或恢复演练。新知识库从原始文档重新上传。若某些原始文件已丢失，其旧 Milvus Chunk 将不会进入新系统，必须在启用前明确接受这个缺口。
+- 盘点 MySQL 的 `knowledge_bases` 记录：旧 `collection_name` 指向的集合在新实例中不存在。决定保留元数据并重建文档，或清理旧知识库记录；**清理 MySQL 记录是独立的数据变更，不在本步骤自动执行**。
 
 **为什么**
 
-Milvus 官方 2.6 Standalone 升级指南要求先到至少 2.5.16，再升级到其指南对应的 2.6 版本；项目当前是 2.3.3。官方也提供从 2.3.x 读取数据并迁移到新实例的工具，但自动迁移旧 Schema 不会生成本项目所需的 BM25 Function，因此本项目还要执行 Schema 转换。[2.6 升级指南](https://milvus.io/docs/v2.6.x/upgrade_milvus_standalone-docker.md) · [2.3.x 数据迁移指南](https://milvus.io/docs/v2.5.x/from-m2x.md)
+放弃旧数据后，不需要走官方针对**保留数据原地升级**的 2.5.16 中间版本路径；但必须使用全新卷，不能仅改镜像标签后让 2.6 容器读取 2.3 的 etcd/MinIO/Milvus 数据。[2.6 升级指南](https://milvus.io/docs/v2.6.x/upgrade_milvus_standalone-docker.md)
 
 **交付与通过条件**
 
-- 测试 Milvus 能创建含 BM25 Function 的 Collection，并分别完成插入、Dense Search、BM25 Search、Hybrid Search。
-- 旧实例/卷可独立恢复；版本和依赖升级步骤已在测试环境跑通。
+- 隔离 Milvus 2.6.24 已健康运行，并完成含 BM25 Function 的 Collection 创建、插入、Dense Search、BM25 Search、Hybrid Search。2026-10-18 的实际烟测均通过，详见 `docs/rag-hybrid-step1-runbook.md`。
+- 正式开发环境的全新卷及 MySQL 旧知识库记录处理方式明确后，才能将应用默认连接切到新实例；旧卷不删除，也不作为自动回滚路径。
 
 ### 步骤 2：设计并验证新版 Collection Schema
 
@@ -81,7 +81,7 @@ Milvus 官方 2.6 Standalone 升级指南要求先到至少 2.5.16，再升级�
 
 | 字段 | 类型 | 用途 |
 | --- | --- | --- |
-| `id` | `VarChar` 主键 | 沿用旧 Chunk ID，便于比对与去重 |
+| `id` | `VarChar` 主键 | 新 Chunk 的稳定 ID，便于去重与引用 |
 | `text` | `VarChar`，启用 analyzer | 原文、BM25 输入与返回的证据内容 |
 | `dense_vector` | `FloatVector(1024)` | BGE-M3 Dense 检索；需与实际模型维度一致 |
 | `sparse_vector` | `SparseFloatVector` | BM25 Function 输出；插入时不由应用传值 |
@@ -90,7 +90,7 @@ Milvus 官方 2.6 Standalone 升级指南要求先到至少 2.5.16，再升级�
 
 - 创建时在 `text` 开启 analyzer，定义 `text → sparse_vector` 的 BM25 Function。分别给 `dense_vector` 建 `COSINE` 索引、给 `sparse_vector` 建 `SPARSE_INVERTED_INDEX + BM25` 索引，完成后加载 Collection。
 - 中文内容先测试目标版本的 `chinese` analyzer。样例必须同时包含中文短语、`RUN_CANCELLED`、`AbortController`、`/chat/runs/:runId` 等技术标识符。若分词导致标识符失真，评估自定义 analyzer、另存关键词字段或查询规范化。
-- 为每个知识库记录 `collectionSchemaVersion=2`、`hybridCollectionName`、`migrationStatus` 等状态；原有 `collectionName` 保留作为旧路径。若数据库字段改造暂缓，也必须有持久化的映射，不能只靠进程内 Map。
+- `collectionName` 直接指向新集合；不增加知识库 Schema 版本字段。旧 MySQL 记录若指向不存在的 Collection，使用前须人工核对并重建。
 
 **为什么**
 
@@ -99,33 +99,38 @@ BM25 Function 与 analyzer 是 Collection Schema 的一部分，旧集合无法�
 **交付与通过条件**
 
 - 对同一条测试 Chunk，插入请求只包含 `text + dense_vector + 其他标量字段`，Milvus 自动生成 BM25 稀疏表示。
-- 用原始查询文本进行 BM25 搜索，中文词和精确标识符各有可解释的命中；旧 Collection 仍能被 Dense 搜索。
+- 用原始查询文本进行 BM25 搜索，中文词和精确标识符各有可解释的命中；同一新版 Collection 仍能进行 Dense Only 搜索。
 
-### 步骤 3：修改写入路径并回填旧数据
+**2026-10-19 验证记录：** `scripts/rag/hybrid-schema-smoke.mjs` 在隔离 Milvus 2.6.24 上以 1024 维和完整字段实测通过：中文“一键中断”、`RUN_CANCELLED`、`AbortController`、`/chat/runs/:runId` 的 BM25 召回，以及知识库过滤和 Dense 查询。`chinese` analyzer 把 `RUN_CANCELLED` 分成 `RUN`/`CANCELLED`，路径分成 `chat`/`runs`/`runId`；当前只验证可召回，**不保证字面完全匹配或同形词不会误召回**，需在步骤 6 评估是否增设专门关键词字段。
+
+复跑命令：`pnpm build` → `docker compose -f docker-compose.rag-hybrid-smoke.yml up -d` → `node scripts/rag/hybrid-schema-smoke.mjs` → `docker compose -f docker-compose.rag-hybrid-smoke.yml down`。最后一步不加 `-v`，保留测试卷。
+
+### 步骤 3：修改新知识库写入路径并重新上传文档
 
 **要做什么**
 
-- 在 `MilvusService` 增加 `createHybridCollection()`、`insertHybridChunks()` 等独立方法；不要直接改变旧 `createCollection()` 和 `insert()` 的语义。
-- 新知识库默认创建新版 Collection 的时机由配置开关控制。灰度阶段每个知识库的写入目标由数据库状态决定；尚未迁移的知识库继续写旧集合。
-- 从旧 Collection 分页/迭代读取全部 Chunk，保留主键、文本和元数据。若已确认旧数据全部由相同的 BGE-M3 模型和 1024 维配置生成，可复用旧 Dense 向量；若模型来源不确定，则先抽样核验，必要时重新 Embedding。
-- 迁移每批记录 `lastId/已处理数/失败数`，支持中断后续跑；按主键幂等写入。迁移期间限制目标知识库上传和删除，或先实现双写与增量补偿，避免快照与切流量间漏数据。
-- 逐库比对源/目标行数、ID 集合、文本 Hash、向量维度与抽样检索结果。现有系统没有独立的原始文档实体和文件存储，因此迁移只能依赖旧 Milvus 中的 Chunk 内容，无法凭空恢复原文件、页码或标题层级。
+- 在 `MilvusService` 增加 `createHybridCollection()`、`insertHybridChunks()` 等独立方法，先在测试入口验证，不直接改变旧 `createCollection()` 和 `insert()` 的语义。
+- 应用连接新 Milvus 后，新知识库默认创建新版 Collection；写入 `id/text/dense_vector/metadata/knowledge_base_id`，由 Milvus 根据文本生成 `sparse_vector`。
+- 从原始文档重新上传到新知识库；明确旧 MySQL 知识库的处理方式，避免列表显示可点开但对应 Collection 缺失。不得在未核对引用关系前直接清空整库 MySQL。
+- 核对新知识库的文档数、Chunk 数、向量维度、来源元数据和抽样检索结果。现有系统没有独立的原始文件持久化；若原始文件已丢失，本计划不承诺重建对应内容。
 
 **为什么**
 
-数据迁移与查询切换必须解耦。先回填并验数，再开启新搜索，才能在查询异常时迅速回到旧路径。记录批次游标和幂等 ID 可以避免长任务失败后重头开始或重复写入。
+放弃旧 Milvus 数据后不再需要回填、断点续跑或双写，但必须确保新上传的文档真实进入新 Schema，并防止旧 MySQL 元数据指向不存在的 Collection。
 
 **交付与通过条件**
 
-- 每个待切换知识库的源/目标 Chunk 数和 ID 完全一致；文本与元数据抽样一致。
-- 迁移失败的知识库保持旧路径，不标记为 `READY`。
+- 新创建的知识库全部使用新版 Schema，插入不传 `sparse_vector`，查询可同时走 Dense 与 BM25。
+- 对旧 MySQL 知识库有明确的重建或隔离规则；不存在“记录可见但集合缺失”造成的误导性成功响应。
+
+**当前实现进度：** `docker-compose.yml` 已改用新 Milvus/etcd/MinIO 卷；新建知识库写当前 Hybrid Schema，上传走 `dense_vector + text`。应用不再按 Schema 版本阻断旧 MySQL 记录，也不需要新增版本列；旧记录若仍指向已丢失的 Collection，需人工重建。完整的 MySQL + 应用端到端上传验收仍待运行。
 
 ### 步骤 4：实现单库 Dense、BM25、Hybrid 三种检索模式
 
 **要做什么**
 
-- 保留原来的 Dense Search，新增 `searchDenseV2()`、`searchBm25()`、`searchHybrid()`，三者返回统一的结果类型：`id/text/metadata/score/retrievalMode/knowledgeBaseId`。
-- `RagService.search()` 先检查 `tenantId + knowledgeBaseId` 归属，再根据知识库状态和开关选择旧 Dense 或新版检索。对 `query` 长度、`topK` 范围做 Zod 限制，避免过大搜索请求。
+- 在新版集合上实现 `searchDenseV2()`、`searchBm25()`、`searchHybrid()`，三者返回统一的结果类型：`id/text/metadata/score/retrievalMode/knowledgeBaseId`。
+- `RagService.search()` 先检查 `tenantId + knowledgeBaseId` 归属，再根据开关选择 Dense、BM25 或 Hybrid。对 `query` 长度、`topK` 范围做 Zod 限制，避免过大搜索请求。
 - 对同一个新版 Collection，Hybrid 子请求分别传入 `embedQuery(query)` 的 Dense 向量与**原始 query 字符串**。两个子请求采用相同的知识库过滤范围；先取候选 Top N，通过 RRF 排序后在应用层截取最终 Top K。当前安装的 SDK 类型没有在子请求上声明 `limit`，其实现会把顶层 `limit` 继承到各子请求，因此顶层先传候选数。
 - 调用接口按当前安装的 SDK `2.6.17` 类型编写：`hybridSearch({ collection_name, data: [{ anns_field, data, ... }], rerank, limit })`。官网其他版本示例有使用 `requests` 的写法，本项目必须以锁定版本的类型定义和集成测试为准。[Node SDK 2.6 hybridSearch API](https://milvus.io/api-reference/node/v2.6.x/Vector/hybridSearch.md)
 
@@ -136,24 +141,22 @@ import { RRFRanker } from '@zilliz/milvus2-sdk-node';
 
 const candidateK = Math.max(topK, 20);
 const response = await client.hybridSearch({
-  collection_name: kb.hybridCollectionName,
+  collection_name: kb.collectionName,
   data: [
     {
       anns_field: 'dense_vector',
       data: denseQueryVector,
       expr: kbFilter,
-      params: { metric_type: 'COSINE' },
     },
     {
       anns_field: 'sparse_vector',
       data: query,
       expr: kbFilter,
-      params: { metric_type: 'BM25' },
     },
   ],
   rerank: RRFRanker(60),
   limit: candidateK,
-  output_fields: ['text', 'metadata', 'knowledge_base_id'],
+  output_fields: ['id', 'text', 'metadata', 'knowledge_base_id'],
 });
 const hits = response.results.slice(0, topK);
 ```
@@ -165,13 +168,15 @@ const hits = response.results.slice(0, topK);
 - 同一问题能分别得到 Dense、BM25、Hybrid 结果；精确标识符可从 BM25 路径命中。
 - 不属于当前租户/知识库的数据在三种模式下均不可见；无结果时返回空数组，错误有可追踪日志。
 
+**当前实现进度：** `MilvusService` 已实现三模式；知识库搜索与流式对话按请求中的 `retrievalMode` 选择，未传时默认 `dense_v2`，不再依赖环境变量。前端两个入口均可选择模式，Agent 工具继承本次对话的选择。输入限制为 1–2048 字符、`topK` 1–20。隔离 Milvus 已验证双路 Hybrid 过滤；仍需 MySQL + 应用端到端验证，以及更多租户/无结果场景测试。
+
 ### 步骤 5：处理 Agent 工具的跨知识库结果
 
 **要做什么**
 
 - `rag_retrieval` 仍只列出租户可访问的知识库，但给每个结果补上 `knowledgeBaseId`、`knowledgeBaseName`、`chunkId` 与 `retrievalMode`。
 - 当前工具逐库串行搜索且直接按 `score` 排序。改为受控并发查询，并在汇总时避免直接比较不同 Collection 的原始分数。首版可先选择相关知识库，或每库取固定候选后使用应用层的排名融合/配额策略，再做全局去重与截取。
-- 工具返回中保留来源和检索模式，便于 Agent 引用和后续排障。混合召回失败时只在明确配置的降级策略下回到旧 Dense 路径，并记录降级原因。
+- 工具返回中保留来源和检索模式，便于 Agent 引用和后续排障。混合召回失败时只在明确配置的降级策略下回到**同一新集合**的 Dense Only 路径，并记录降级原因。
 
 **为什么**
 
@@ -204,39 +209,39 @@ RRF 解决的是两路排名融合，不等于 Cross-Encoder 语义重排；它�
 
 **要做什么**
 
-- 用配置开关控制 `dense_legacy / dense_v2 / bm25 / hybrid`，先选一个非关键知识库灰度，再按知识库逐步扩大。
+- 用请求参数选择 `dense_v2 / bm25 / hybrid`，未传时使用服务端默认 Dense。先用非关键知识库试用，再按知识库逐步扩大；正式灰度权限控制尚待设计。
 - 观测 `tenantId/knowledgeBaseId/retrievalMode/queryId`（查询文本须按隐私要求处理）、结果数量、零结果率、耗时、错误率、降级次数和索引/Collection 状态。
-- 回滚时只切回旧 Dense Collection 和旧检索模式；保留新集合供排查。若灰度期间允许写入新版集合，回滚前必须确认旧集合也获得这些增量；否则先做双写或补偿，避免回滚后新文档“消失”。
-- 待所有库稳定并完成数据核验后，另开清理任务删除旧资源。删除前确认备份、保留期及恢复演练；本计划不执行删除。
+- 检索异常时先切回**同一新版集合**的 Dense Only；这不会丢失灰度期间写入的新文档。若需要回退 Milvus Server 本身，则需单独设计数据导出与版本兼容路径，不能假设旧 2.3 卷能承载新文档。
+- 旧卷清理另开任务，在用户确认无保留价值后执行；本计划不自动删除。
 
 **为什么**
 
-查询代码回退很快，但数据路径若只写新版，回滚到旧集合会出现数据缺口。因此写入路径和回滚路径必须一起设计。
+新集合内同时有 Dense 和 BM25 索引，因此检索策略可以从 Hybrid 降级到 Dense，而不依赖已经放弃的旧集合。
 
 **交付与通过条件**
 
-- 单库开关切换与回滚演练成功；切换前后知识库数据量和结果可见性一致。
+- 单库开关切换与 Dense Only 降级演练成功；切换前后知识库数据量和结果可见性一致。
 - 无跨租户结果、无异常升高、性能达到步骤 6 的预算，再扩大范围。
 
 ## 5. 建议的代码改动清单
 
 | 文件/模块 | 计划改动 |
 | --- | --- |
-| `docker-compose.yml` | 测试环境版本升级与依赖配置；生产/本地迁移方案确认后再改默认部署 |
+| `docker-compose.yml` | 已改默认部署为 Milvus 2.6.24 及全新卷；不挂载旧 Milvus/etcd/MinIO 卷 |
 | `src/rag/milvus.service.ts` | 新版 Schema、双索引、BM25/Hybrid 查询、版本检测与明确的错误处理 |
 | `src/rag/rag.service.ts` | 知识库模式选择、写入新版 Collection、三模式搜索及结果归一化 |
-| `src/entities/knowledge-base.entity.ts` | 新集合名、Schema 版本和迁移状态持久化；配套数据库迁移 |
-| `src/rag/rag.controller.ts` | `topK`/模式参数校验；只对授权的测试或管理入口开放调试模式 |
+| `src/entities/knowledge-base.entity.ts` | 只保留 `collectionName`，不增加 Schema 版本字段或配套 SQL |
+| `src/rag/rag.controller.ts`、`src/chat/chat.controller.ts` | 已接收并校验本次请求的检索模式；灰度权限控制尚未实现 |
 | `src/tools/rag-retrieval.tool.ts` | 跨知识库召回的并发控制、合并策略、来源字段与降级记录 |
-| `src/rag/*.spec.ts`、集成测试 | Mock 验证模式选择与租户过滤；真实 Milvus 验证 BM25 Function、中文分词、写入/查询/迁移 |
-| 迁移脚本与评估数据 | 分批回填、断点续跑、源目标数据核验和三模式评估 |
+| `src/rag/*.spec.ts`、集成测试 | 已有 Hybrid 创建/写入/无版本字段检索单测和真实 Milvus Schema 烟测；后续补业务端到端与三模式测试 |
+| 重新上传与评估数据 | 固定文档集、标注问题集和三模式评估 |
 
 ## 6. 必测场景
 
 1. **功能：** 中英文自然语言、错误码、API 路径、版本号、无匹配词、空知识库；Dense/BM25/Hybrid 的返回字段一致。
-2. **安全：** 其他租户知识库 ID、伪造过滤条件、非法/极大 `topK`、知识库删除或迁移中查询。
-3. **数据：** 迁移中断续跑、重复写入、旧/新主键与文本一致、同一知识库上传与迁移并发。
-4. **可靠性：** Milvus 不可用、BM25 索引未加载、Embedding 失败、Hybrid 查询超时、回滚后新增文档仍可见。
+2. **安全：** 其他租户知识库 ID、伪造过滤条件、非法/极大 `topK`、旧 MySQL 记录指向不存在的集合。
+3. **数据：** 重新上传、重复写入、Chunk 主键与文本一致、旧知识库元数据隔离。
+4. **可靠性：** Milvus 不可用、BM25 索引未加载、Embedding 失败、Hybrid 查询超时、Dense Only 降级后新增文档仍可见。
 5. **性能：** 大知识库、多知识库、并发请求下的 P95 延迟和 Milvus 资源占用。
 
 ## 7. 关键决策记录
@@ -246,12 +251,12 @@ RRF 解决的是两路排名融合，不等于 Cross-Encoder 语义重排；它�
 | 稀疏表示 | Milvus 内置 BM25 | BGE-M3 learned sparse、外部搜索引擎 |
 | 融合 | RRF，初始 `k=60` | 有评估集后再试 Weighted Ranker |
 | Collection | 沿用每知识库一集合，创建新版集合 | 知识库规模增长后考虑共享集合与租户 Partition Key |
-| 迁移 | 保留旧集合，新集合回填并逐库切换 | 完整文档管理、原文件持久化与重建流水线 |
+| 旧数据 | 不迁移；新知识库重新上传文档，旧卷暂存不删除 | 完整文档管理、原文件持久化与重建流水线 |
 | 二阶段模型重排 | 本期不加入 | Hybrid 质量稳定后再评估 Cross-Encoder Reranker |
 
 ## 8. 完成定义
 
-- 已有知识库完成可核验的新版回填，新知识库能使用新版 Schema 写入；旧数据和回滚路径在保留期内可用。
+- 新知识库能使用新版 Schema 写入；旧 MySQL 知识库记录已重建或隔离，不会错误指向不存在的 Collection。
 - Dense、BM25 和 Hybrid 三模式均通过真实 Milvus 集成测试，中文与技术标识符检索符合评估预期。
 - 默认检索模式由评估结果决定，关键质量与延迟指标可复跑、可观测。
 - Agent 工具的跨知识库合并不直接比较不同检索分数，租户隔离和来源信息得到验证。
@@ -261,6 +266,5 @@ RRF 解决的是两路排名融合，不等于 Cross-Encoder 语义重排；它�
 - [Milvus 2.5 全文检索与 BM25 Function](https://milvus.io/docs/v2.5.x/full-text-search.md)
 - [Milvus 2.6 Node SDK hybridSearch API](https://milvus.io/api-reference/node/v2.6.x/Vector/hybridSearch.md)
 - [Milvus 2.6 RRF Ranker](https://milvus.io/docs/v2.6.x/rrf-ranker.md)
-- [Milvus 2.3.x 数据迁移指南](https://milvus.io/docs/v2.5.x/from-m2x.md)
 - [Milvus 2.6 Standalone 升级指南](https://milvus.io/docs/v2.6.x/upgrade_milvus_standalone-docker.md)
 - [Milvus 中文分析器选型](https://milvus.io/docs/zh/v2.6.x/choose-the-right-analyzer-for-your-use-case.md)
