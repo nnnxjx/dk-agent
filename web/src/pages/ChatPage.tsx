@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { chatApi, streamChat, chatRunApi, CANCEL_SUFFIX, workflowApi, Conversation, Message, Workflow, type RetrievalMode } from "@/lib/api";
+import { chatApi, streamChat, chatRunApi, CANCEL_SUFFIX, workflowApi, Conversation, Message, Workflow } from "@/lib/api";
 import {
   Plus,
   Send,
@@ -56,7 +56,6 @@ export default function ChatPage() {
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
-  const [retrievalMode, setRetrievalMode] = useState<RetrievalMode | "default">("default");
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   /** 当前 runId（取自 RUN_STARTED），显式 DELETE /runs/:runId 用 */
@@ -213,7 +212,6 @@ export default function ChatPage() {
         message: userMsg,
         conversationId: activeId || undefined,
         workflowId: selectedWorkflowId || undefined,
-        retrievalMode: retrievalMode === "default" ? undefined : retrievalMode,
       },
       (eventType, data) => {
         setStreamState((prev) => {
@@ -393,9 +391,8 @@ export default function ChatPage() {
         {/* Input area */}
         <div className="border-t bg-background/80 backdrop-blur-sm p-4">
           <div className="mx-auto max-w-3xl">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              {workflows.length > 0 && (
-                <>
+            {workflows.length > 0 && (
+              <div className="mb-2 flex items-center gap-2">
                 <Select value={selectedWorkflowId} onValueChange={setSelectedWorkflowId}>
                   <SelectTrigger className="h-8 w-72 text-xs">
                     <SelectValue placeholder="选择工作流（可选，按 DAG 编排执行）" />
@@ -419,26 +416,14 @@ export default function ChatPage() {
                     清除
                   </Button>
                 )}
-                </>
-              )}
-              <Select value={retrievalMode} onValueChange={(value) => setRetrievalMode(value as RetrievalMode | "default")}>
-                <SelectTrigger className="h-8 w-36 text-xs" aria-label="知识库检索模式">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">检索：默认 Dense</SelectItem>
-                  <SelectItem value="dense_v2">检索：Dense</SelectItem>
-                  <SelectItem value="bm25">检索：BM25</SelectItem>
-                  <SelectItem value="hybrid">检索：Hybrid</SelectItem>
-                </SelectContent>
-              </Select>
-              {selectedWorkflowId && (
-                <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <GitBranch className="h-3.5 w-3.5" />
-                  将使用「{workflows.find((w) => w.id === selectedWorkflowId)?.name}」执行
-                </span>
-              )}
-            </div>
+                {selectedWorkflowId && (
+                  <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <GitBranch className="h-3.5 w-3.5" />
+                    将使用「{workflows.find((w) => w.id === selectedWorkflowId)?.name}」执行
+                  </span>
+                )}
+              </div>
+            )}
             <div className="flex gap-2">
               <Textarea
                 value={input}

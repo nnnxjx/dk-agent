@@ -168,15 +168,15 @@ const hits = response.results.slice(0, topK);
 - 同一问题能分别得到 Dense、BM25、Hybrid 结果；精确标识符可从 BM25 路径命中。
 - 不属于当前租户/知识库的数据在三种模式下均不可见；无结果时返回空数组，错误有可追踪日志。
 
-**当前实现进度：** `MilvusService` 已实现三模式；知识库搜索与流式对话按请求中的 `retrievalMode` 选择，未传时默认 `dense_v2`，不再依赖环境变量。前端两个入口均可选择模式，Agent 工具继承本次对话的选择。输入限制为 1–2048 字符、`topK` 1–20。隔离 Milvus 已验证双路 Hybrid 过滤；仍需 MySQL + 应用端到端验证，以及更多租户/无结果场景测试。
+**当前实现进度：** `MilvusService` 已实现三模式；知识库搜索可按请求中的 `retrievalMode` 选择，未传时默认 `dense_v2`，不再依赖环境变量。Agent 的 `rag_retrieval` 固定使用 Hybrid，聊天请求不传模式。输入限制为 1–2048 字符、`topK` 1–20。隔离 Milvus 已验证双路 Hybrid 过滤；仍需 MySQL + 应用端到端验证，以及更多租户/无结果场景测试。
 
 ### 步骤 5：处理 Agent 工具的跨知识库结果
 
 **要做什么**
 
-- `rag_retrieval` 仍只列出租户可访问的知识库，但给每个结果补上 `knowledgeBaseId`、`knowledgeBaseName`、`chunkId` 与 `retrievalMode`。
-- 当前工具逐库串行搜索且直接按 `score` 排序。改为受控并发查询，并在汇总时避免直接比较不同 Collection 的原始分数。首版可先选择相关知识库，或每库取固定候选后使用应用层的排名融合/配额策略，再做全局去重与截取。
-- 工具返回中保留来源和检索模式，便于 Agent 引用和后续排障。混合召回失败时只在明确配置的降级策略下回到**同一新集合**的 Dense Only 路径，并记录降级原因。
+- `rag_retrieval` 固定使用 Hybrid，仍只列出租户可访问的知识库；给每个结果补上 `knowledgeBaseId`、`knowledgeBaseName`、`chunkId` 与 `retrievalMode`。
+- 工具以最多 4 个并发查询各知识库，每库取 `max(10, topK)` 个候选（最多 20）；按库内名次轮流合并，避免直接比较不同 Collection 的原始分数。相同文本合并为一条并保留全部来源，再截取最终 Top K。
+- 工具返回中保留来源、检索模式、库内名次和只在本库有效的 `localScore`，便于 Agent 引用和后续排障。单库失败标记 `partialFailure` 与失败库清单，全库失败返回 `success:false`；当前不自动降级到 Dense。若将来启用降级，只能在明确配置的策略下回到**同一新集合**的 Dense Only 路径，并记录原因。
 
 **为什么**
 
@@ -186,6 +186,8 @@ Milvus 的单次 Hybrid Search 只在一个 Collection 内融合。如果有多�
 
 - 多知识库问题能够命中目标库，结果不会因不同分数量纲而明显偏向某个库。
 - 租户隔离与 Agent 的现有 `rag_retrieval` 调用方式保持兼容。
+
+**当前实现进度：** 已实现受控并发、固定 Hybrid、库内名次轮流合并、相同文本去重并聚合来源、部分/全部失败标记；多库模拟单测通过。不同库同名次候选目前按知识库 ID 稳定排序，属于公平配额而非全局相关性重排。真实多知识库问答效果、P95 延迟与合并策略优劣仍需步骤 6 的标注集及端到端验证。
 
 ### 步骤 6：离线评估与参数选择
 
@@ -209,7 +211,7 @@ RRF 解决的是两路排名融合，不等于 Cross-Encoder 语义重排；它�
 
 **要做什么**
 
-- 用请求参数选择 `dense_v2 / bm25 / hybrid`，未传时使用服务端默认 Dense。先用非关键知识库试用，再按知识库逐步扩大；正式灰度权限控制尚待设计。
+- 知识库搜索接口可用请求参数对比 `dense_v2 / bm25 / hybrid`，未传时默认 Dense；Agent 工具固定 Hybrid。先用非关键知识库试用；正式灰度和降级策略尚待设计。
 - 观测 `tenantId/knowledgeBaseId/retrievalMode/queryId`（查询文本须按隐私要求处理）、结果数量、零结果率、耗时、错误率、降级次数和索引/Collection 状态。
 - 检索异常时先切回**同一新版集合**的 Dense Only；这不会丢失灰度期间写入的新文档。若需要回退 Milvus Server 本身，则需单独设计数据导出与版本兼容路径，不能假设旧 2.3 卷能承载新文档。
 - 旧卷清理另开任务，在用户确认无保留价值后执行；本计划不自动删除。
@@ -231,8 +233,8 @@ RRF 解决的是两路排名融合，不等于 Cross-Encoder 语义重排；它�
 | `src/rag/milvus.service.ts` | 新版 Schema、双索引、BM25/Hybrid 查询、版本检测与明确的错误处理 |
 | `src/rag/rag.service.ts` | 知识库模式选择、写入新版 Collection、三模式搜索及结果归一化 |
 | `src/entities/knowledge-base.entity.ts` | 只保留 `collectionName`，不增加 Schema 版本字段或配套 SQL |
-| `src/rag/rag.controller.ts`、`src/chat/chat.controller.ts` | 已接收并校验本次请求的检索模式；灰度权限控制尚未实现 |
-| `src/tools/rag-retrieval.tool.ts` | 跨知识库召回的并发控制、合并策略、来源字段与降级记录 |
+| `src/rag/rag.controller.ts` | 已接收并校验知识库搜索请求的检索模式；聊天 Agent 工具固定 Hybrid |
+| `src/tools/rag-retrieval.tool.ts` | 已实现跨知识库受控并发、按库内名次合并、来源与部分失败标记；自动降级尚未设计 |
 | `src/rag/*.spec.ts`、集成测试 | 已有 Hybrid 创建/写入/无版本字段检索单测和真实 Milvus Schema 烟测；后续补业务端到端与三模式测试 |
 | 重新上传与评估数据 | 固定文档集、标注问题集和三模式评估 |
 

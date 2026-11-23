@@ -172,7 +172,7 @@ recursionLimit = 50
 
 - `ToolRegistry` 全局单例，`getByNames/getAll` 供 Agent 声明可用工具；LLM 自主决定调不调、调哪个。
 - `web_search`：Tavily API，输入 `{query, maxResults?}`，输出标题+URL+摘要。
-- `rag_retrieval`：输入 `{query, topK?, knowledgeBaseId?}`，经 `RagService` 做 Milvus 向量检索，输出相似片段（tenant 隔离）。
+- `rag_retrieval`：输入 `{query, topK?}`，固定在租户范围内对各知识库做 Milvus Hybrid 检索；以受控并发查询并按库内名次合并，输出相似片段及来源、部分失败标记。
 
 ### 3.9 RAG（`rag/`）
 

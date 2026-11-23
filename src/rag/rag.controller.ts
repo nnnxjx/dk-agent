@@ -23,6 +23,7 @@ import { DocumentLoaderService } from './document-loader.service';
 import { JwtAuthGuard, TenantGuard } from '../auth/guards';
 import { TenantId } from '../common/decorators/tenant.decorator';
 import { RetrievalModeSchema } from './retrieval-mode';
+import { decodeUploadFilename } from './upload-filename';
 
 const CreateKBSchema = z.object({
   name: z.string().min(1),
@@ -99,6 +100,7 @@ export class RagController {
       throw new Error('未选择文件');
     }
 
+    file.originalname = decodeUploadFilename(file.originalname);
     try{
       const docs = await this.documentLoaderService.loadFile(
         file.buffer,
@@ -144,6 +146,7 @@ export class RagController {
     }> = [];
 
     for (const file of files) {
+      file.originalname = decodeUploadFilename(file.originalname);
       try {
         const docs = await this.documentLoaderService.loadFile(
           file.buffer,

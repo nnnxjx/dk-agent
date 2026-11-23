@@ -99,7 +99,6 @@ export function streamChat(
     message: string;
     conversationId?: string;
     workflowId?: string;
-    retrievalMode?: RetrievalMode;
     llmOptions?: { provider?: string; model?: string; temperature?: number };
   },
   onEvent: (event: string, data: Record<string, unknown>) => void,

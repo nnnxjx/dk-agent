@@ -34,6 +34,36 @@ describe('RagService new Milvus schema', () => {
     } as any);
   });
 
+  it.each(['upload', 'search'])('logs diagnostic fields and propagates %s embedding failures', async (operation) => {
+    repo.findOne.mockResolvedValue({
+      id: kbId, tenantId, collectionName: 'kb_test',
+      chunkSize: 1000, chunkOverlap: 200,
+    });
+    const error = Object.assign(new Error('Rejected test-key private document'), {
+      status: 403, code: 'model_access_denied', request_id: 'request-123',
+      headers: { authorization: 'Bearer test-key' },
+    });
+    const log = jest.spyOn((service as any).logger, 'error').mockImplementation(() => {});
+    (service as any).embeddings = {
+      model: 'BAAI/bge-m3',
+      embedDocuments: jest.fn().mockRejectedValue(error),
+      embedQuery: jest.fn().mockRejectedValue(error),
+    };
+    const request = operation === 'upload'
+      ? service.addDocuments(kbId, tenantId, [{ content: 'private document' }])
+      : service.search(kbId, tenantId, 'private document');
+    await expect(request).rejects.toBe(error);
+    const output = JSON.stringify(log.mock.calls);
+    expect(output).toContain('model_access_denied');
+    expect(output).toContain('request-123');
+    expect(output).not.toContain('test-key');
+    expect(output).not.toContain('private document');
+    expect(output).not.toContain('authorization');
+    expect(milvus.insertHybridChunks).not.toHaveBeenCalled();
+    expect(milvus.searchDenseV2).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
   it('creates a hybrid collection without a schema version field', async () => {
     const created = await service.createKnowledgeBase('test', '', tenantId);
     expect(created).not.toHaveProperty('collectionSchemaVersion');

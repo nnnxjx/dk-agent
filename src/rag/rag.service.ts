@@ -26,7 +26,7 @@ export class RagService {
     private readonly milvusService: MilvusService,
     private readonly configService: ConfigService,
   ) {
-    const apiKey = "sk-uuouioqjnijgvtzgdraxdcwsmsitqfgrdhyyrocjscncygmx";
+    const apiKey = this.configService.get('llm.openai.apiKey');
     const baseUrl = this.configService.get('llm.openai.baseUrl');
 
     this.embeddings = new OpenAIEmbeddings({
@@ -91,7 +91,10 @@ export class RagService {
     for (const doc of documents) {
       const chunks = await splitter.splitText(doc.content);
 
-      const vectors = await this.embeddings.embedDocuments(chunks);
+      const vectors = await this.withEmbeddingErrorLog(
+        'embedDocuments', knowledgeBaseId, chunks,
+        () => this.embeddings.embedDocuments(chunks),
+      );
 
       for (let i = 0; i < chunks.length; i++) {
         allChunks.push({
@@ -151,7 +154,10 @@ export class RagService {
     if (mode.data === 'bm25') {
       results = await this.milvusService.searchBm25V2(kb.collectionName, queryText, limit, filter);
     } else {
-      const queryVector = await this.embeddings.embedQuery(queryText);
+      const queryVector = await this.withEmbeddingErrorLog(
+        'embedQuery', knowledgeBaseId, [queryText],
+        () => this.embeddings.embedQuery(queryText),
+      );
       results = mode.data === 'hybrid'
         ? await this.milvusService.searchHybridV2(kb.collectionName, queryVector, queryText, limit, filter)
         : await this.milvusService.searchDenseV2(kb.collectionName, queryVector, limit, filter);
@@ -165,6 +171,53 @@ export class RagService {
       retrievalMode: mode.data,
       knowledgeBaseId,
     }));
+  }
+
+  private async withEmbeddingErrorLog<T>(
+    operation: string,
+    knowledgeBaseId: string,
+    inputs: string[],
+    invoke: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await invoke();
+    } catch (error: unknown) {
+      const err = error as any;
+      // Only select diagnostic fields; never serialize the request or headers.
+      const details = {
+        operation,
+        knowledgeBaseId,
+        model: this.embeddings.model,
+        inputCount: inputs.length,
+        maxInputCharacters: inputs.reduce((max, text) => Math.max(max, text.length), 0),
+        name: err?.name,
+        message: err?.message ?? String(error),
+        status: err?.status ?? err?.response?.status,
+        code: err?.code ?? err?.error?.code,
+        type: err?.type ?? err?.error?.type,
+        param: err?.param ?? err?.error?.param,
+        providerMessage: err?.error?.message,
+        requestId: err?.request_id ?? err?.headers?.['x-request-id'],
+        attemptNumber: err?.attemptNumber,
+        retriesLeft: err?.retriesLeft,
+        causeCode: err?.cause?.code,
+        causeMessage: err?.cause?.message,
+      };
+      const secrets = [
+        this.configService.get<string>('llm.openai.apiKey'),
+        ...inputs,
+      ].filter((value): value is string => !!value);
+      const redact = (value: string) => secrets.reduce(
+        (text, secret) => text.split(secret).join('[REDACTED]'), value,
+      ).replace(/sk-[a-zA-Z0-9_-]+/g, '[REDACTED]');
+      // Redact before encoding so quotes/newlines in input cannot evade matching.
+      this.logger.error(
+        `Embedding request failed: ${JSON.stringify(details, (_key, value) =>
+          typeof value === 'string' ? redact(value) : value)}`,
+        typeof err?.stack === 'string' ? redact(err.stack) : undefined,
+      );
+      throw error;
+    }
   }
 
   async listKnowledgeBases(tenantId: string) {

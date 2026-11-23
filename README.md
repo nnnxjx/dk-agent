@@ -184,7 +184,9 @@ pnpm dev:web        # http://localhost:5173，自动代理 /api → localhost:30
 | | `POST /api/v1/knowledge-bases/:id/load-url` | 加载网页内容 |
 | | `POST /api/v1/knowledge-bases/:id/search` | 语义检索 |
 
-知识库搜索和流式对话请求都可传 `retrievalMode: "dense_v2" | "bm25" | "hybrid"`。不传时默认 `dense_v2`；对话中的 Agent 检索工具沿用本次请求的模式。前端两个页面均可选择模式，无需设置环境变量。
+知识库搜索可传 `retrievalMode: "dense_v2" | "bm25" | "hybrid"`，不传时默认 `dense_v2`；知识库页面可选择模式以对比效果。对话中的 Agent `rag_retrieval` 工具固定使用 Hybrid，不接受模式参数，也无需设置环境变量。
+
+Agent 跨知识库检索最多并发查询 4 个知识库；每库先取候选，再按库内名次轮流合并并去重。工具结果中的 `localScore` 只用于解释单库排序，不可跨库比较；重复文本会合并来源，部分知识库失败会在结果中标记。
 
 完整 API 文档见 [API.md](./API.md)，架构设计见 [架构.md](./架构.md)。
 
