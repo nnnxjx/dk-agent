@@ -1,0 +1,25 @@
+{
+  "version": "rag-hybrid-v1",
+  "createdDate": "2026-11-23",
+  "scope": "仅 corpus 内两份固定文档；不含现有知识库 PDF，也不含测试题和答案文件",
+  "retrievalMode": "hybrid",
+  "topK": 5,
+  "questionCount": 40,
+  "answerableCount": 32,
+  "noAnswerCount": 8,
+  "split": {
+    "dev": 30,
+    "test": 10
+  },
+  "labelStatus": "原文已关联，实际 Chunk ID 和知识库绑定待完成",
+  "sources": [
+    {
+      "path": "corpus/README.md",
+      "sha256": "a435a80f5e81bf34140359c1895ecbdd66a79429923d8d518f6b26cebf21bd9c"
+    },
+    {
+      "path": "corpus/API.md",
+      "sha256": "0fd1121de0626dceb5bf024446630da6ebe26394a2cfe24f98de5546b52876d2"
+    }
+  ]
+}

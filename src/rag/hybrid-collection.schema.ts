@@ -1,7 +1,12 @@
 import { DataType, FunctionType } from '@zilliz/milvus2-sdk-node';
 
 export const HYBRID_EMBEDDING_DIM = 1024;
-export const HYBRID_ANALYZER_PARAMS = { type: 'chinese' } as const;
+// Apply the same lowercase normalization at indexing and query time.
+// Existing collections retain their original analyzer and must be reindexed.
+export const HYBRID_ANALYZER_PARAMS = {
+  tokenizer: 'jieba',
+  filter: ['cnalphanumonly', 'lowercase'],
+} as const;
 
 /** 只用于全新 Milvus 2.6 集合；旧 2.3 Collection 不能原地补 BM25 Function。 */
 export function hybridCollectionSchema(collectionName: string, dim = HYBRID_EMBEDDING_DIM) {

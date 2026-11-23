@@ -17,7 +17,13 @@ describe('hybridCollectionSchema', () => {
     const dense = schema.fields.find((field) => field.name === 'dense_vector');
     const sparse = schema.fields.find((field) => field.name === 'sparse_vector');
 
-    expect(text).toMatchObject({ enable_analyzer: true, analyzer_params: { type: 'chinese' } });
+    expect(text).toMatchObject({
+      enable_analyzer: true,
+      analyzer_params: {
+        tokenizer: 'jieba',
+        filter: ['cnalphanumonly', 'lowercase'],
+      },
+    });
     expect(dense).toMatchObject({ data_type: DataType.FloatVector, dim: HYBRID_EMBEDDING_DIM });
     expect(sparse).toMatchObject({ data_type: DataType.SparseFloatVector, is_function_output: true });
     expect(schema.functions[0]).toMatchObject({
