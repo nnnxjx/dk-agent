@@ -200,10 +200,12 @@ getContextMessages：
  all = getMessages（Redis conv_msgs:{id} 优先，否则 MySQL createdAt ASC + 回填）
  all ≤ windowSize(10, 默认) → 全量
  windowSize < all ≤ summaryThreshold(20) → 最近 windowSize 条
- all > summaryThreshold → generateSummary(早期 all[:-windowSize] + 旧summary → LLM压缩 → conversations.summary/summaryUntilMessageId) + [system: 对话历史摘要] + 最近 windowSize 条
+ all > summaryThreshold → generateSummary(旧summary + 游标之后且已移出窗口的新消息 → LLM合并 → conversations.summary/summaryUntilMessageId) + [system: 对话历史摘要] + 最近 windowSize 条
 ```
 
 - `generateSummary` 走小 temperature LLM，失败只记 error，不阻断对话。
+- 增量范围为 `summaryUntilMessageId` 之后、最近 `windowSize` 条之前的消息；没有新增消息时不调用 LLM。首次摘要压缩整个早期前缀，摘要或游标缺失、游标找不到时从原始早期消息重建，不重复叠加旧摘要。
+- 摘要和游标一起更新，并以旧游标作乐观并发条件，防止旧结果覆盖已推进的摘要；空结果或调用失败保留原摘要与进度。此策略不改变摘要触发阈值或原始消息存储。
 - Redis TTL 3600s；`addMessage` 追加写缓存；`deleteConversation` 双清。
 - 配置源：`memory.windowSize / memory.summaryThreshold`（`common/config`）。
 

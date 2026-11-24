@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Conversation } from '../entities/conversation.entity';
 import { Message, MessageRole } from '../entities/message.entity';
 import { RedisService } from '../redis/redis.service';
@@ -153,11 +153,27 @@ export class ChatService {
     return recent;
   }
 
-  /** 用 LLM 自动压缩历史消息为摘要 */
+  /** 合并旧摘要与新移出窗口的消息；游标异常时从原始历史重建。 */
   private async generateSummary(conversationId: string, tenantId: string, all: Message[], conv: Conversation) {
     try {
-      const toSummarize = all.slice(0, -this.windowSize);
-      const existing = conv.summary || '';
+      // 待摘要历史的结束下标（不包含）：最后 windowSize 条保留原文，不参与摘要。
+      // 例如共 23 条、窗口为 10，则 historyEnd = 13，历史范围为 all[0..12]。
+      const historyEnd = Math.max(0, all.length - this.windowSize);
+      // 旧摘要覆盖的最后一条消息在 all 中的位置；没有游标或找不到消息时为 -1。
+      const cursorIndex = conv.summaryUntilMessageId
+        ? all.findIndex((m) => m.id === conv.summaryUntilMessageId)
+        : -1;
+      // 只有摘要与游标同时有效才能增量合并；兼容没有游标的旧数据。
+      const incremental = Boolean(conv.summary?.trim()) && cursorIndex >= 0;
+      // 本次摘要的起始下标（包含）：增量模式从旧游标下一条开始，重建模式从头开始。
+      const start = incremental ? cursorIndex + 1 : 0;
+      // 游标已覆盖所有移出窗口的消息，无需再次调用模型。
+      if (start >= historyEnd) return;
+
+      // 本次需要压缩的原始消息，范围为 [start, historyEnd)，不含近期窗口。
+      const toSummarize = all.slice(start, historyEnd);
+      // 增量模式携带旧摘要供模型合并；重建时丢弃旧摘要，避免重复或错误信息叠加。
+      const existing = incremental ? conv.summary : '';
 
       // 构建提示
       let prompt = existing
@@ -166,7 +182,7 @@ export class ChatService {
       for (const m of toSummarize) {
         prompt += `[${m.role === 'user' ? '用户' : '助手'}]: ${m.content}\n`;
       }
-      prompt += '\n请输出一段简洁的摘要（保留关键信息、决策结果和用户偏好）：';
+      prompt += '\n请将已有摘要与新增内容合并为一段完整、简洁的摘要（保留关键信息、决策结果和用户偏好；以新增内容更新已变化的信息）：';
 
       const llm = this.llmService.createModel({ streaming: false, temperature: 0.3 });
       const result = await llm.invoke([
@@ -174,11 +190,22 @@ export class ChatService {
         { role: 'user', content: prompt },
       ] as any);
 
-      const summary = typeof result.content === 'string' ? result.content : '';
+      const summary = typeof result.content === 'string' ? result.content.trim() : '';
 
       if (summary) {
+        // 新摘要覆盖到的最后一条消息 ID，与摘要正文一起保存，作为下次增量处理的游标。
         const lastId = toSummarize[toSummarize.length - 1]?.id;
-        await this.convRepo.update({ id: conversationId, tenantId }, { summary, summaryUntilMessageId: lastId });
+        // 乐观并发控制：较早请求不能覆盖另一个请求已推进的摘要。
+        const updated = await this.convRepo.update(
+          {
+            id: conversationId,
+            tenantId,
+            summaryUntilMessageId: conv.summaryUntilMessageId ?? IsNull(),
+          },
+          { summary, summaryUntilMessageId: lastId },
+        );
+        // 未更新任何行说明游标已变化或会话已删除，丢弃本次生成的过期结果。
+        if (!updated.affected) return;
         await this.redisService.del(CONV_KEY(conversationId));
         this.logger.log(`Summary generated for ${conversationId}, compressed ${toSummarize.length} messages`);
       }
