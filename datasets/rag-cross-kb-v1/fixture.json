@@ -1,0 +1,188 @@
+{
+  "version": "rag-cross-kb-v1",
+  "synthetic": true,
+  "note": "全部为合成测试资料，不代表真实项目参数；答案文件不入库。",
+  "knowledgeBases": [
+    {
+      "role": "noise1",
+      "name": "跨库评测-干扰1",
+      "documents": [
+        {
+          "content": "晨雾代理网关操作手册：默认请求超时为 4100 毫秒，重连最多 7 次。此参数只适用于晨雾代理，不适用于霁云网关。",
+          "metadata": {
+            "source": "noise-1.md"
+          }
+        }
+      ]
+    },
+    {
+      "role": "noise2",
+      "name": "跨库评测-干扰2",
+      "documents": [
+        {
+          "content": "暮色索引网关操作手册：默认请求超时为 4200 毫秒，重连最多 8 次。此参数只适用于暮色索引，不适用于霁云网关。",
+          "metadata": {
+            "source": "noise-2.md"
+          }
+        }
+      ]
+    },
+    {
+      "role": "noise3",
+      "name": "跨库评测-干扰3",
+      "documents": [
+        {
+          "content": "星河缓存网关操作手册：默认请求超时为 4300 毫秒，重连最多 9 次。此参数只适用于星河缓存，不适用于霁云网关。",
+          "metadata": {
+            "source": "noise-3.md"
+          }
+        }
+      ]
+    },
+    {
+      "role": "noise4",
+      "name": "跨库评测-干扰4",
+      "documents": [
+        {
+          "content": "山岚调度网关操作手册：默认请求超时为 4400 毫秒，重连最多 10 次。此参数只适用于山岚调度，不适用于霁云网关。",
+          "metadata": {
+            "source": "noise-4.md"
+          }
+        }
+      ]
+    },
+    {
+      "role": "targetA",
+      "name": "跨库评测-霁云配置",
+      "documents": [
+        {
+          "content": "霁云网关配置事实：默认请求超时为 2800 毫秒。发布失败后应在 15 分钟内完成回滚。",
+          "metadata": {
+            "source": "jiyun-config.md"
+          }
+        },
+        {
+          "content": "霁云网关公共操作要求：变更前必须登记工单编号，并由双人复核。",
+          "metadata": {
+            "source": "shared-a.md"
+          }
+        }
+      ]
+    },
+    {
+      "role": "targetB",
+      "name": "跨库评测-霁云运维",
+      "documents": [
+        {
+          "content": "霁云网关运维事实：重连最多重试 3 次。审计日志保留 12 天。",
+          "metadata": {
+            "source": "jiyun-ops.md"
+          }
+        },
+        {
+          "content": "霁云网关公共操作要求：变更前必须登记工单编号，并由双人复核。",
+          "metadata": {
+            "source": "shared-b.md"
+          }
+        }
+      ]
+    },
+    {
+      "role": "foreign",
+      "name": "跨库评测-其他租户",
+      "foreign": true,
+      "documents": [
+        {
+          "content": "霁云网关隔离标记查询：其他租户专属标记为 STEP3_FOREIGN_ONLY_7F。该标记不属于当前租户。",
+          "metadata": {
+            "source": "foreign-only.md"
+          }
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "single-timeout",
+      "category": "干扰库",
+      "query": "霁云网关默认请求超时是多少毫秒？",
+      "evidence": [
+        "默认请求超时为 2800 毫秒"
+      ],
+      "answerTokens": [
+        "2800"
+      ],
+      "failure": "none"
+    },
+    {
+      "id": "single-rollback",
+      "category": "干扰库",
+      "query": "霁云网关发布失败后应在多少分钟内回滚？",
+      "evidence": [
+        "15 分钟内完成回滚"
+      ],
+      "answerTokens": [
+        "15"
+      ],
+      "failure": "none"
+    },
+    {
+      "id": "two-kb",
+      "category": "跨库证据",
+      "query": "霁云网关默认请求超时是多少毫秒，重连最多重试几次？",
+      "evidence": [
+        "默认请求超时为 2800 毫秒",
+        "重连最多重试 3 次"
+      ],
+      "answerTokens": [
+        "2800",
+        "3"
+      ],
+      "failure": "none"
+    },
+    {
+      "id": "dedup",
+      "category": "重复来源",
+      "query": "霁云网关变更前公共操作要求是什么？",
+      "evidence": [
+        "霁云网关公共操作要求：变更前必须登记工单编号，并由双人复核。"
+      ],
+      "answerTokens": [
+        "工单",
+        "双人"
+      ],
+      "failure": "none",
+      "duplicate": true
+    },
+    {
+      "id": "partial-failure",
+      "category": "部分失败",
+      "query": "霁云网关默认请求超时是多少毫秒？",
+      "evidence": [
+        "默认请求超时为 2800 毫秒"
+      ],
+      "answerTokens": [
+        "2800"
+      ],
+      "failure": "noise1"
+    },
+    {
+      "id": "all-failure",
+      "category": "全部失败",
+      "query": "霁云网关默认请求超时是多少毫秒？",
+      "evidence": [],
+      "answerTokens": [],
+      "failure": "all",
+      "noAnswer": true
+    },
+    {
+      "id": "isolation",
+      "category": "租户隔离",
+      "query": "请查询霁云网关隔离标记的具体值。",
+      "evidence": [],
+      "answerTokens": [],
+      "failure": "none",
+      "noAnswer": true
+    }
+  ]
+}
