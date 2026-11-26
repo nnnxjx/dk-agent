@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Read-only Hybrid evaluation. Calls the application's RagService.search path.
+// Read-only retrieval evaluation. Calls the application's RagService.search path.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 import mysql from 'mysql2/promise';
+import { scoreRetrieval, summarize } from './eval-metrics.mjs';
 import { MilvusClient } from '@zilliz/milvus2-sdk-node';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 
@@ -17,34 +18,19 @@ const normalize = (value) => value.replace(/\s+/g, ' ').trim();
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const command = process.argv[2];
 const split = process.argv[3] || 'dev';
-if (!['prepare', 'evaluate'].includes(command) || !['dev', 'test'].includes(split)) {
-  throw new Error('Usage: node --env-file=.env scripts/rag/hybrid-eval.mjs prepare|evaluate [dev|test] [knowledgeBaseName] [outDirectory]');
+const mode = process.argv[6] || 'hybrid';
+const topK = Number(process.argv[7] || 5);
+if (!['dense_v2', 'bm25', 'hybrid'].includes(mode) || !Number.isInteger(topK) || topK < 1 || topK > 20) {
+  throw new Error('Invalid retrieval mode or topK (1-20)');
+}
+if (!['prepare', 'evaluate', 'compare'].includes(command) || !['dev', 'test'].includes(split)) {
+  throw new Error('Usage: node --env-file=.env scripts/rag/hybrid-eval.mjs prepare|evaluate|compare [dev|test] [knowledgeBaseName] [outDirectory] [dense_v2|bm25|hybrid] [topK]');
 }
 
 function assertSuccess(response) {
   if (response.status?.error_code !== 'Success') {
     throw new Error(response.status?.reason || 'Milvus request failed');
   }
-}
-
-function summarize(rows) {
-  const answerable = rows.filter((row) => !row.noAnswer);
-  const negatives = rows.filter((row) => row.noAnswer);
-  const average = (items, get) => items.length
-    ? Number((items.reduce((sum, row) => sum + get(row), 0) / items.length).toFixed(4)) : null;
-  const timings = rows.filter((row) => !row.error).map((row) => row.totalMs).sort((a, b) => a - b);
-  return {
-    questionCount: rows.length,
-    answerableCount: answerable.length,
-    noAnswerCount: negatives.length,
-    failedCount: rows.filter((row) => row.error).length,
-    hitAt5: average(answerable, (row) => row.firstRelevantRank ? 1 : 0),
-    mrrAt5: average(answerable, (row) => row.firstRelevantRank ? 1 / row.firstRelevantRank : 0),
-    allEvidenceAt5: average(answerable, (row) => row.allEvidenceFound ? 1 : 0),
-    noAnswerReturnedResultsRate: average(negatives, (row) => row.hits.length ? 1 : 0),
-    p50TotalMs: timings.length ? timings[Math.ceil(timings.length * 0.5) - 1] : null,
-    p95TotalMs: timings.length ? timings[Math.ceil(timings.length * 0.95) - 1] : null,
-  };
 }
 
 async function main() {
@@ -124,7 +110,7 @@ async function main() {
       return;
     }
     const saved = JSON.parse(await readFile(resolve(outDir, 'binding.json'), 'utf8'));
-    if (saved.corpusFingerprint !== fingerprint || saved.questionHash !== hash(rawQuestions)) {
+    if (saved.kb.id !== kb.id || saved.kb.tenantId !== kb.tenantId || saved.corpusFingerprint !== fingerprint || saved.questionHash !== hash(rawQuestions)) {
       throw new Error('Corpus/questions changed; prepare and review labels again');
     }
     // Reuse the actual application path rather than an approximate Hybrid query.
@@ -147,36 +133,56 @@ async function main() {
         return rows[0] || null;
       },
     };
+    if (kb.embeddingModel !== 'BAAI/bge-m3') throw new Error('Evaluator requires the application embedding model BAAI/bge-m3');
+    const collection = await client.describeCollection({ collection_name: kb.collectionName });
+    assertSuccess(collection);
     const rag = new RagService(repo, milvus, config);
-    const results = [];
-    for (const question of saved.questions.filter((q) => q.split === split)) {
-      const row = { id: question.id, query: question.query, noAnswer: question.noAnswer, hits: [], firstRelevantRank: null, allEvidenceFound: false };
-      const start = performance.now();
-      try {
-        const hits = await rag.search(kb.id, kb.tenantId, question.query, 5, 'hybrid');
-        row.hits = hits.map((hit, index) => ({ rank: index + 1, id: String(hit.id), score: hit.score, source: hit.metadata?.source, text: hit.text }));
-        row.firstRelevantRank = row.hits.find((hit) => question.relevantChunkIds.includes(hit.id))?.rank ?? null;
-        row.allEvidenceFound = !question.noAnswer && question.evidenceGroups.every((group) => row.hits.some((hit) => group.relevantChunkIds.includes(hit.id)));
-      } catch (error) {
-        row.error = String(error?.message || error).replace(/sk-[a-zA-Z0-9_-]+/g, '[REDACTED]');
+    const configurations = command === 'compare'
+      ? ['dense_v2', 'bm25', 'hybrid'].flatMap((mode) => [3, 5, 10].map((topK) => ({ mode, topK })))
+      : [{ mode, topK }];
+    const comparisons = [];
+    const runId = Date.now();
+    const selected = saved.questions.filter((q) => q.split === split);
+    if (!selected.length) throw new Error('Empty evaluation split');
+    for (const { mode, topK } of configurations) {
+      const results = [];
+      for (const question of selected) {
+        const row = { id: question.id, query: question.query, category: question.category, recall: 0, precision: 0, noAnswer: question.noAnswer, hits: [], firstRelevantRank: null, allEvidenceFound: false };
+        const start = performance.now();
+        try {
+          const hits = await rag.search(kb.id, kb.tenantId, question.query, topK, mode);
+          row.hits = hits.map((hit, index) => ({ rank: index + 1, id: String(hit.id), score: hit.score, source: hit.metadata?.source, text: hit.text }));
+          Object.assign(row, scoreRetrieval(question, row.hits, topK));
+        } catch (error) {
+          row.error = String(error?.message || error).replace(/sk-[a-zA-Z0-9_-]+/g, '[REDACTED]');
+        }
+        row.totalMs = Math.round((performance.now() - start) * 100) / 100;
+        results.push(row);
+        console.log(`${row.id}: ${row.error || `rank=${row.firstRelevantRank ?? '-'} allEvidence=${row.allEvidenceFound}`}`);
       }
-      row.totalMs = Math.round((performance.now() - start) * 100) / 100;
-      results.push(row);
-      console.log(`${row.id}: ${row.error || `rank=${row.firstRelevantRank ?? '-'} allEvidence=${row.allEvidenceFound}`}`);
+      const report = {
+        generatedAt: new Date().toISOString(), mode, split, topK,
+        collectionSchema: collection.schema, embeddingModel: kb.embeddingModel, chunkSize: kb.chunkSize, chunkOverlap: kb.chunkOverlap,
+        milvusVersion: (await client.getVersion()).version, corpusFingerprint: fingerprint,
+        questionHash: hash(rawQuestions), kbId: kb.id, knowledgeBaseName: kb.name, collectionName: kb.collectionName,
+        scope: 'Single knowledge base via RagService.search; no Agent generation, citations, abstention, web search, or cross-KB merge evaluated',
+        noAnswerNote: 'Returned-results rate is diagnostic only, not hallucination or false-answer rate. No rejection gate is evaluated.',
+        metrics: summarize(results, topK),
+        byCategory: Object.fromEntries([...new Set(results.map((r) => r.category))].map((category) => [category, summarize(results.filter((r) => r.category === category), topK)])),
+        metricNotes: 'Macro averages on answerable questions; errors score zero; precision divides by K even for short results; relevance is exact labeled evidence quote matching, not exhaustive human relevance judgments. Sequential retrieval timings exclude Agent generation and are not load-test SLAs.',
+        results,
+      };
+      const reportPath = resolve(outDir, `${split}-${mode}-k${topK}-${runId}.json`);
+      await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
+      console.log(JSON.stringify({ reportPath, metrics: report.metrics }, null, 2));
+      comparisons.push({ mode, topK, reportPath, metrics: report.metrics });
+      if (report.metrics.failedCount) process.exitCode = 1;
     }
-    const report = {
-      generatedAt: new Date().toISOString(), mode: 'hybrid', split, topK: 5,
-      embeddingModel: kb.embeddingModel, chunkSize: kb.chunkSize, chunkOverlap: kb.chunkOverlap,
-      milvusVersion: (await client.getVersion()).version, corpusFingerprint: fingerprint,
-      questionHash: hash(rawQuestions), kbId: kb.id, knowledgeBaseName: kb.name, collectionName: kb.collectionName,
-      scope: 'Single knowledge base via RagService.search; no Agent generation, citations, abstention, web search, or cross-KB merge evaluated',
-      noAnswerNote: 'Returned-results rate is diagnostic only, not hallucination or false-answer rate. No rejection gate is evaluated.',
-      metrics: summarize(results), results,
-    };
-    const reportPath = resolve(outDir, `${split}-${Date.now()}.json`);
-    await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
-    console.log(JSON.stringify({ reportPath, metrics: report.metrics }, null, 2));
-    if (report.metrics.failedCount) process.exitCode = 1;
+    if (command === 'compare') {
+      const comparisonPath = resolve(outDir, `${split}-comparison-${runId}.json`);
+      await writeFile(comparisonPath, JSON.stringify({ generatedAt: new Date().toISOString(), split, corpusFingerprint: fingerprint, questionHash: hash(rawQuestions), comparisons }, null, 2) + '\n');
+      console.log(JSON.stringify({ comparisonPath, comparisons }, null, 2));
+    }
   } finally {
     await serviceClient?.closeConnection();
     await client.closeConnection();

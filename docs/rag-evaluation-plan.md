@@ -93,12 +93,12 @@ RAG 的基本链路为：文档解析、分块和入库 → 检索相关片段 �
 
 ## 4. 第一步：补齐检索方案对比
 
-状态：待实施。已有 Hybrid 基线，尚需统一对比脚本和实验报告。
+状态：首轮九组对比已完成（2026-11-26）。统一对比脚本、Recall/Precision 计算与测试已完成，Dense、BM25、Hybrid 各 Top3/5/10 均已实测。
 
 ### 实施内容
 
 1. 固定语料版本、证据标注、分块参数、Embedding 模型、分词器和运行环境。
-2. 扩展 `hybrid-eval.mjs`，允许选择 `dense_v2`、`bm25`、`hybrid` 和 TopK；当前脚本固定为 Hybrid、Top5。
+2. `hybrid-eval.mjs` 已支持选择 `dense_v2`、`bm25`、`hybrid` 和 TopK，`compare` 可运行三种模式与 Top3/5/10 的九组配置。
 3. 在同一开发集上对比三种模式及 Top3、Top5、Top10。
 4. 报告 Hit@K、Recall@K、Precision@K、MRR@K、完整证据命中率、P50/P95、失败数。Recall 和 Precision 均为必测指标，按第 3 节口径对有答案题取宏平均；失败题记 0，无答案题单独统计。
 5. 按同义改写、错误码、接口路径、中英文混合等类别分析失败题。
@@ -110,14 +110,69 @@ RAG 的基本链路为：文档解析、分块和入库 → 检索相关片段 �
 - 失败请求纳入质量指标的失败处理，并单独报告失败数；存在调用失败时先排查，再判断方案优劣。
 - 修改分块参数时重新绑定证据与 Chunk ID，不复用失效主键。
 
-现有脚本的运行示例，仅适用于对应知识库和依赖已经准备好的环境：
+脚本运行示例，仅适用于对应知识库和依赖已经准备好的环境：
 
 ```powershell
 node --env-file=.env scripts/rag/hybrid-eval.mjs prepare dev "RAG 评测 v2" reports/rag-baseline/hybrid-v2
 node --env-file=.env scripts/rag/hybrid-eval.mjs evaluate dev "RAG 评测 v2" reports/rag-baseline/hybrid-v2
 ```
 
-`prepare` 会重新写入本地绑定文件。正式实验建议使用新的输出目录保存记录；上述命令不是尚未实现的多模式、多 TopK 对比命令。
+`prepare` 会重新写入本地绑定文件。正式实验使用新的输出目录保存记录。多模式对比与单配置命令：
+
+```powershell
+node --env-file=.env scripts/rag/hybrid-eval.mjs prepare dev "RAG 评测 v2" reports/rag-baseline/retrieval-step1-20261126
+node --env-file=.env scripts/rag/hybrid-eval.mjs compare dev "RAG 评测 v2" reports/rag-baseline/retrieval-step1-20261126
+node --env-file=.env scripts/rag/hybrid-eval.mjs evaluate dev "RAG 评测 v2" reports/rag-baseline/retrieval-step1-20261126 bm25 5
+node --test scripts/rag/eval-metrics.test.mjs
+```
+
+### 2026-11-26 首轮执行记录
+
+计划文档已先独立提交：`80de6aa`（`docs: record RAG evaluation plan with recall and precision`）。随后扩展脚本，指标的三项测试和脚本语法检查通过。
+
+恢复了已停止的现有 Milvus 容器，保留原数据卷。`prepare` 确认 40 题、16 个分块；本轮仅运行开发集 30 题，其中有答案 24 题、无答案 6 题，未使用保留测试集。
+
+| 模式 | TopK | Hit | Recall | Precision | MRR | 完整证据命中率 | P95（ms） | 失败数 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| BM25 | 3 | 91.67% | 91.67% | 33.33% | 0.7778 | 91.67% | 8.13 | 0 |
+| BM25 | 5 | 100% | 100% | 21.67% | 0.7965 | 100% | 10.32 | 0 |
+| BM25 | 10 | 100% | 100% | 10.83% | 0.7965 | 100% | 8.77 | 0 |
+
+逐题结果与分类汇总保存在本地 [本轮报告目录](../reports/rag-baseline/retrieval-step1-20261126/)，该目录被 Git 忽略。
+
+- Top3 漏召回 `hybrid-006` 和 `hybrid-007`，Top5 中分别排第 4、第 5。
+- Top10 相比 Top5 没有增加已标注证据的召回，按固定 K 作分母的 Precision 降低。
+- 三组无答案题有结果率均为 100%；未评估拒答或幻觉。
+- 相关分块按已标注原文引句精确匹配确定，尚非穷尽的人工相关性标注。Precision 应称为对标注证据的精确率，不能将未命中的片段全部断言为无关。
+- 每组仅顺序运行一轮，低毫秒延迟差异不能用来断言性能优劣。
+- 完整九组对比被自动审批拦截：Dense 和 Hybrid 会将题库问题文本发送到 `.env` 配置的 SiliconFlow Embedding API，审批要求先明确授权这一外发行为。BM25 不调用外部 Embedding API，已单独完成。
+- 上述拦截记录保留作为执行历史。用户随后明确要求继续运行 Dense、Hybrid，六组评测已完成，见下一节。
+
+### 2026-11-26 Dense / Hybrid 补测及九组结论
+
+使用知识库 **RAG 评测 v2**，Milvus Collection 为 `kb_00300e54bf4645939763a8044640cc4b`。语料为固定 README、API 两份文档，共 16 个分块；Embedding 模型为 BAAI/bge-m3，分块大小/重叠为 1000/200。沿用同一绑定和开发集，未运行保留测试集。
+
+| 模式 | TopK | Hit | Recall | Precision | MRR | 完整证据命中率 | P95（ms） | 失败数 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Dense | 3 | 91.67% | 89.58% | 31.94% | 0.6944 | 91.67% | 250.76 | 0 |
+| Dense | 5 | 95.83% | 95.83% | 20.83% | 0.7049 | 95.83% | 338.86 | 0 |
+| Dense | 10 | 100% | 100% | 10.83% | 0.7118 | 100% | 422.69 | 0 |
+| Hybrid | 3 | 100% | 100% | 36.11% | 0.9236 | 100% | 256.58 | 0 |
+| Hybrid | 5 | 100% | 100% | 21.67% | 0.9236 | 100% | 289.49 | 0 |
+| Hybrid | 10 | 100% | 100% | 10.83% | 0.9236 | 100% | 182.66 | 0 |
+
+汇总：[九组本地 JSON 报告](../reports/rag-baseline/retrieval-step1-20261126/step1-summary.json)。该汇总同时保留各配置的分类指标，逐题结果见同目录原始报告。
+
+结论与限制：
+
+- 本开发集上，Hybrid Top3 已覆盖全部标注相关分块及必要证据；Top5/10 没有增加召回。同为 Top3 时，Hybrid 的命中率、Recall、Precision 与 MRR 均优于 Dense 和 BM25。
+- Top5 时，Hybrid 与 BM25 的 Hit/Recall 都为 100%，但 Hybrid MRR=0.9236，高于 BM25 的 0.7965，表示首个正确片段整体更靠前。
+- Dense Top3 漏掉 `hybrid-009`（长对话如何压缩历史信息）和 `hybrid-021`（创建对话时如何指定 DAG 编排）；Top5 补回前者，后者在 Top10 中排第 6。
+- Dense Top3 的 Hit 与 Recall 不相同：命中一个相关分块，并不保证找齐全部标注相关分块；完整证据命中率按证据组计算，也不要求找回所有重复分块。
+- 所有九组均无调用失败，六道无答案题均仍返回片段；拒答与最终回答质量尚未评估。
+- 可以将 Hybrid Top3 作为后续扩展题库和端到端评测的候选配置，尚不足以据此修改生产默认 TopK。
+- 单轮顺序请求中存在网络与缓存波动，Hybrid Top10 的 P95 更低不能解释为增大 TopK 会加速检索。
+- 精确率仅相对于标注证据计算，小语料开发集结果不能泛化为生产准确率。未修改业务检索参数或知识库内容。
 
 ## 5. 第二步：补齐最终回答评测（优先）
 
