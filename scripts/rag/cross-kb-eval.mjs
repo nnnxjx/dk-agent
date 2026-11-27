@@ -9,6 +9,7 @@ import { extractTrace } from './answer-eval-lib.mjs';
 const require = createRequire(import.meta.url);
 require('ts-node/register/transpile-only');
 const { ConfigService } = require('@nestjs/config');
+const { GlobalRerankService } = require('../../src/rag/global-rerank.service.ts');
 const { RagService } = require('../../src/rag/rag.service.ts');
 const { MilvusService } = require('../../src/rag/milvus.service.ts');
 const { createRagRetrievalTool } = require('../../src/tools/rag-retrieval.tool.ts');
@@ -23,11 +24,12 @@ const fixtureRaw = await readFile('datasets/rag-cross-kb-v1/fixture.json', 'utf8
 const fixture = JSON.parse(fixtureRaw);
 const hash = (text) => createHash('sha256').update(text).digest('hex');
 const config = new ConfigService(configuration());
+const reranker = new GlobalRerankService(config);
 async function main() {
 const db = await mysql.createConnection({ host: process.env.MYSQL_HOST || 'localhost', port: Number(process.env.MYSQL_PORT || 3306), user: process.env.MYSQL_USER, password: process.env.MYSQL_PASSWORD, database: process.env.MYSQL_DATABASE, connectTimeout: 5000 });
 const milvus = new MilvusService(config);
 let state;
-const bindingPath = resolve(outDir, 'binding.json');
+const bindingPath = resolve(process.env.RAG_CROSS_BINDING || resolve(outDir, 'binding.json'));
 const columns = 'id, name, tenant_id AS tenantId, collection_name AS collectionName, embedding_model AS embeddingModel, chunk_size AS chunkSize, chunk_overlap AS chunkOverlap, document_count AS documentCount';
 const repo = {
   create: (value) => ({ ...value, id: randomUUID(), documentCount: 0 }),
@@ -106,7 +108,7 @@ try {
   for (const testCase of fixture.cases) for (const topK of [3,5,10]) {
     const telemetry = { candidates: [], maxConcurrency: 0 };
     const start = performance.now();
-    const output = JSON.parse(String(await createRagRetrievalTool(serviceFor(testCase,telemetry),state.tenantId).invoke({ query: testCase.query, topK })));
+    const output = JSON.parse(String(await createRagRetrievalTool(serviceFor(testCase,telemetry),state.tenantId,reranker).invoke({ query: testCase.query, topK })));
     const coverage = evidenceCoverage(testCase,output.results);
     const candidates = evidenceCoverage(testCase,telemetry.candidates.flatMap((c) => c.hits));
     const duplicateHit = testCase.duplicate ? output.results.find((h) => normalize(h.text) === normalize(testCase.evidence[0])) : null;
@@ -128,7 +130,7 @@ try {
   const llms = new LLMService(config);
   for (const testCase of fixture.cases) {
     const telemetry = { candidates: [], maxConcurrency: 0 }; const events = [];
-    const agent = new AgentService(llms,{getByNames:()=>[]},new SupervisorFactory(),{},{},serviceFor(testCase,telemetry));
+    const agent = new AgentService(llms,{getByNames:()=>[]},new SupervisorFactory(),{},{},serviceFor(testCase,telemetry),undefined,reranker);
     const start = performance.now(); let error;
     try {
       await agent.execute({ threadId: randomUUID(),runId:randomUUID(),tenantId:state.tenantId,
@@ -147,6 +149,7 @@ try {
   }
   const summary = {
     generatedAt:new Date().toISOString(),fixtureHash:state.fixtureHash,isolation,
+    rerankEnabled:config.get('rag.rerank.enabled'),
     scope:'Synthetic cross-KB integration; real SQL/RagService/Milvus/Hybrid/tool/AgentService; no HTTP/auth test',
     model:config.get('llm.defaultModel'),provider:config.get('llm.defaultProvider'),temperature:0,
     sourceHashes:Object.fromEntries(await Promise.all(['src/tools/rag-retrieval.tool.ts','src/rag/rag.service.ts','src/rag/milvus.service.ts','src/agent/agent.service.ts','src/agent/supervisor.factory.ts'].map(async(path)=>[path,hash(await readFile(path,'utf8'))]))),

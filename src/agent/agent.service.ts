@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LLMService, LLMOptions } from '../llm/llm.service';
 import { ToolRegistry } from '../tools/tool-registry';
 import { SupervisorFactory, AgentDefinition } from './supervisor.factory';
 import { DagEngine, DagExecutionContext } from './dag-engine';
 import { WorkflowService } from './workflow.service';
 import { RagService } from '../rag/rag.service';
+import { GlobalRerankService } from '../rag/global-rerank.service';
 import { createRagRetrievalTool } from '../tools/rag-retrieval.tool';
 import { McpToolProvider } from '../mcp/mcp-tool.provider';
 import { AGUIEvent, EventType, genId } from '../common/interfaces/ag-ui-events';
@@ -50,6 +51,7 @@ export class AgentService {
     private readonly workflowService: WorkflowService,
     private readonly ragService: RagService,
     private readonly mcpToolProvider?: McpToolProvider,
+    @Optional() private readonly globalReranker?: GlobalRerankService,
   ) {}
 
   async execute(request: OrchestrationRequest): Promise<void> {
@@ -91,7 +93,7 @@ export class AgentService {
     const llm = this.llmService.createModel({ ...request.llmOptions, streaming: true });
 
     // 动态创建带 tenantId 的 rag_retrieval 工具
-    const ragTool = createRagRetrievalTool(this.ragService, request.tenantId);
+    const ragTool = createRagRetrievalTool(this.ragService, request.tenantId, this.globalReranker);
 
     const agentDefs: AgentDefinition[] = [];
     for (const def of this.defaultAgents) {
@@ -133,7 +135,7 @@ export class AgentService {
 
     const llm = this.llmService.createModel({ ...request.llmOptions, streaming: true });
     const toolsMap = new Map(this.toolRegistry.getAll().map((t) => [t.name, t]));
-    toolsMap.set('rag_retrieval', createRagRetrievalTool(this.ragService, request.tenantId));
+    toolsMap.set('rag_retrieval', createRagRetrievalTool(this.ragService, request.tenantId, this.globalReranker));
 
     // 阶段 6：DAG 按节点装配授权 MCP 工具
     // - agent 节点声明的工具名若是 mcp__ 前缀，必须落在该节点的授权清单里，否则该工具不可见

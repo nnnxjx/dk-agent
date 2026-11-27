@@ -6,6 +6,7 @@ import { KnowledgeBase } from '../entities/knowledge-base.entity';
 import { RagService } from './rag.service';
 import { MilvusService } from './milvus.service';
 import { DocumentLoaderService } from './document-loader.service';
+import { GlobalRerankService } from './global-rerank.service';
 import { RagController } from './rag.controller';
 
 @Module({
@@ -17,7 +18,7 @@ import { RagController } from './rag.controller';
     }),
   ],
   controllers: [RagController],
-  providers: [RagService, MilvusService, DocumentLoaderService],
-  exports: [RagService, MilvusService],
+  providers: [GlobalRerankService, RagService, MilvusService, DocumentLoaderService],
+  exports: [GlobalRerankService, RagService, MilvusService],
 })
 export class RagModule {}

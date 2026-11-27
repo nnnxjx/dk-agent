@@ -55,6 +55,16 @@ export default () => {
         apiKey: process.env.DASHSCOPE_API_KEY,
       },
     },
+    rag: {
+      rerank: {
+        enabled: process.env.RAG_RERANK_ENABLED !== 'false',
+        baseUrl: process.env.RAG_RERANK_BASE_URL || (process.env.OPENAI_BASE_URL?.includes('api.siliconflow.cn') ? process.env.OPENAI_BASE_URL : ''),
+        apiKey: process.env.RAG_RERANK_API_KEY || process.env.OPENAI_API_KEY,
+        model: process.env.RAG_RERANK_MODEL || 'BAAI/bge-reranker-v2-m3',
+        timeoutMs: Number(process.env.RAG_RERANK_TIMEOUT_MS || 5000),
+        maxCandidates: Number(process.env.RAG_RERANK_MAX_CANDIDATES || 200),
+      },
+    },
     mcp: {
       enabled: process.env.MCP_ENABLED !== 'false',
       httpEnabled: process.env.MCP_HTTP_ENABLED !== 'false',

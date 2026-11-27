@@ -34,3 +34,8 @@ node --env-file=.env scripts/rag/cross-kb-eval.mjs evaluate
 - `summary.json`：TopK 汇总、隔离/去重/失败/并发检查、问答结果。
 
 首轮结果及限制见 [项目评测记录](../../docs/rag-evaluation-plan.md)。
+
+
+## 两算法已保存回答的同口径补评
+
+`grading-rubric.json` 仅用于评分，不入库。执行 `node --env-file=.env scripts/rag/cross-kb-grade.mjs`，读取原算法和重排算法的已保存回答，使用公共 `answer-judge.mjs` 补充正确性、完整性、忠实度和拒答评分。结果默认保存到 `reports/rag-baseline/cross-kb-grading-20261127/`，其中 `comparison.json` 为统计汇总、`summary.md` 为可读表格，逐题文件保留原始及引文校验后的判断。该命令不重新生成回答。

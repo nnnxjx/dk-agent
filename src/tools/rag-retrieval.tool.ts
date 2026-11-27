@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Logger } from '@nestjs/common';
 import { RagService } from '../rag/rag.service';
+import type { GlobalRerankService } from '../rag/global-rerank.service';
 import type { KnowledgeBase } from '../entities/knowledge-base.entity';
 
 const logger = new Logger('RagRetrievalTool');
@@ -28,10 +29,9 @@ type SearchOutcome = {
   error?: unknown;
 };
 
-/** 在每个知识库内保持 Hybrid 排名，跨库按名次轮流取，不比较 Collection 之间的原始 score。 */
+/** 按库内名次构建完整去重候选池，最终 TopK 在全局重排后截取；不比较各库原始分数。 */
 function mergeByLocalRank(
   outcomes: SearchOutcome[],
-  topK: number,
 ): MergedHit[] {
   const merged: MergedHit[] = [];
   const byText = new Map<string, MergedHit>();
@@ -88,7 +88,7 @@ function mergeByLocalRank(
     }
   }
 
-  return merged.slice(0, topK);
+  return merged;
 }
 
 /**
@@ -98,6 +98,7 @@ function mergeByLocalRank(
 export function createRagRetrievalTool(
   ragService: RagService,
   tenantId: string,
+  reranker?: GlobalRerankService,
 ) {
   return tool(
     async (input: { query: string; topK: number }) => {
@@ -155,12 +156,19 @@ export function createRagRetrievalTool(
             knowledgeBaseName: kb.name,
           }));
         const success = failures.length < orderedKbs.length;
+        const candidates = mergeByLocalRank(outcomes);
+        const ranking = reranker ? await reranker.rank(input.query, candidates.map((hit) => hit.text))
+          : { applied: false, order: [], reason: 'not_configured', elapsedMs: 0 };
+        const ranked = ranking.applied
+          ? ranking.order.map(({ index, score }) => ({ ...candidates[index], rerankScore: score }))
+          : candidates;
         return JSON.stringify({
-          results: mergeByLocalRank(outcomes, input.topK),
+          results: ranked.slice(0, input.topK),
           success,
           partialFailure: failures.length > 0 && success,
           failedKnowledgeBases: failures,
-          mergeStrategy: 'rank_interleave',
+          mergeStrategy: ranking.applied ? 'global_semantic_rerank' : 'rank_interleave',
+          reranking: { applied: ranking.applied, fallbackReason: ranking.reason, elapsedMs: ranking.elapsedMs, candidateCount: candidates.length },
           ...(success
             ? {}
             : { message: 'All knowledge base searches failed.' }),
@@ -180,7 +188,7 @@ export function createRagRetrievalTool(
     {
       name: 'rag_retrieval',
       description:
-        'Search ALL knowledge bases for relevant information using Hybrid retrieval. Results are merged by local rank; localScore values are not comparable across knowledge bases. Use this for domain-specific knowledge or internal documents.',
+        'Search ALL knowledge bases for relevant information using Hybrid retrieval. Candidates are globally reranked by query relevance when configured; on failure fall back to local-rank interleave. localScore values are not comparable across knowledge bases. Use this for domain-specific knowledge or internal documents.',
       schema: z.object({
         query: z.string().trim().min(1).max(2048).describe('The search query'),
         topK: z

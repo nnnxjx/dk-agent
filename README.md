@@ -186,7 +186,7 @@ pnpm dev:web        # http://localhost:5173，自动代理 /api → localhost:30
 
 知识库搜索可传 `retrievalMode: "dense_v2" | "bm25" | "hybrid"`，不传时默认 `dense_v2`；知识库页面可选择模式以对比效果。对话中的 Agent `rag_retrieval` 工具固定使用 Hybrid，不接受模式参数，也无需设置环境变量。
 
-Agent 跨知识库检索最多并发查询 4 个知识库；每库先取候选，再按库内名次轮流合并并去重。工具结果中的 `localScore` 只用于解释单库排序，不可跨库比较；重复文本会合并来源，部分知识库失败会在结果中标记。
+Agent 跨知识库检索最多并发查询 4 个知识库；每库先取候选，合并去重后使用统一的语义重排模型排序，再截取 TopK。默认模型为 `BAAI/bge-reranker-v2-m3`，使用 SiliconFlow 兼容的 `/rerank` 接口；现有 SiliconFlow Embedding 配置可复用，也可通过 `.env.example` 中的 `RAG_RERANK_*` 独立配置。关闭、未配置、超时、异常响应或候选超过上限时回退为按库内名次轮流合并，并在 `reranking` 中标记原因。工具结果中的 `localScore` 只解释单库排序，统一重排分数为 `rerankScore`；重复文本保留全部来源，部分知识库失败单独标记。单库搜索 API 的行为不变。
 
 完整 API 文档见 [API.md](./API.md)，架构设计见 [架构.md](./架构.md)。
 

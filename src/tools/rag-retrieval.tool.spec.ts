@@ -237,3 +237,28 @@ describe('rag_retrieval cross-knowledge-base merge', () => {
     expect(output.failedKnowledgeBases).toHaveLength(1);
   });
 });
+
+
+describe('global cross-KB reranking', () => {
+  const fixture = () => ({
+    listKnowledgeBases: jest.fn().mockResolvedValue([{ id: 'a', name: 'noise' }, { id: 'b', name: 'target' }, { id: 'c', name: 'duplicate' }]),
+    search: jest.fn(async (id: string) => [{ id, text: id === 'a' ? 'unrelated text' : 'correct evidence', metadata: { source: id }, score: 1 }]),
+  }) as unknown as RagService;
+  it('reranks before truncation and retains duplicate sources', async () => {
+    const rank = jest.fn(async () => ({ applied: true, order: [{ index: 1, score: .9 }, { index: 0, score: .1 }], elapsedMs: 2 }));
+    const result = JSON.parse(String(await createRagRetrievalTool(fixture(), 'tenant', { rank } as any).invoke({ query: 'q', topK: 1 })));
+    expect(rank).toHaveBeenCalledWith('q', ['unrelated text', 'correct evidence']);
+    expect(result.results[0].text).toBe('correct evidence');
+    expect(result.results[0].sources.map((s: any) => s.knowledgeBaseId)).toEqual(['b','c']);
+    expect(result.results[0].rerankScore).toBe(.9);
+    expect(result.mergeStrategy).toBe('global_semantic_rerank');
+  });
+  it('preserves original ordering and marks fallback on rerank failure', async () => {
+    const rank = jest.fn(async () => ({ applied: false, order: [], reason: 'http_503', elapsedMs: 2 }));
+    const result = JSON.parse(String(await createRagRetrievalTool(fixture(), 'tenant', { rank } as any).invoke({ query: 'q', topK: 1 })));
+    expect(result.results[0].knowledgeBaseId).toBe('a');
+    expect(result.mergeStrategy).toBe('rank_interleave');
+    expect(result.reranking.fallbackReason).toBe('http_503');
+    expect(result.success).toBe(true);
+  });
+});
