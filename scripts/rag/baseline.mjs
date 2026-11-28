@@ -23,7 +23,7 @@ function parseArgs(argv) {
   if (!['inventory', 'validate', 'evaluate'].includes(command)) {
     throw new Error(usage);
   }
-  const args = { command, out: 'reports/rag-baseline', topK: 5 };
+  const args = { command, out: command === 'inventory' ? 'reports/rag-baseline/step0-inventory' : 'reports/rag-baseline/step1-single-kb/dense-baseline', topK: 5 };
   for (let i = 0; i < rest.length; i += 2) {
     const key = rest[i];
     const value = rest[i + 1];

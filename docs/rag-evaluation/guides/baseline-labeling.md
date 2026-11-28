@@ -1,6 +1,6 @@
 # RAG Dense 基线标注与运行说明
 
-本说明配合 [混合检索改造计划](rag-hybrid-search-plan.md) 的步骤 0 使用。旧 Milvus 数据不迁移；先在新版 Schema v2 知识库重新上传固定文档集，再标注问题。`scripts/rag/baseline.mjs` 只读取 MySQL、Milvus 和 Embedding API，不会修改知识库。评估输出包含问题、租户与知识库 ID；默认写入被 Git 忽略的 `reports/rag-baseline/`，不要将含敏感内容的报告提交到仓库。
+本说明配合 [混合检索改造计划](hybrid-search-plan.md) 的步骤 0 使用。旧 Milvus 数据不迁移；先在新版 Schema v2 知识库重新上传固定文档集，再标注问题。`scripts/rag/baseline.mjs` 只读取 MySQL、Milvus 和 Embedding API，不会修改知识库。评估输出包含问题、租户与知识库 ID；盘点默认写入 `reports/rag-baseline/step0-inventory/`，Dense 基线默认写入 `reports/rag-baseline/step1-single-kb/dense-baseline/`，均被 Git 忽略。目录分组与其他报告入口见 [报告目录索引](../README.md)。不要将含敏感内容的报告提交到仓库。
 
 ## 1. 启动与盘点
 
@@ -14,7 +14,7 @@ node --env-file=.env scripts/rag/baseline.mjs inventory
 
 ## 2. 标注真实问题
 
-将 `docs/rag-baseline.template.jsonl` 复制为本地数据集，例如 `datasets/rag-baseline.jsonl`。模板行带 `"labelStatus":"todo"`，仅提示问题类别，不会进入评估。每行应填入真实知识库中的问题和标签：
+将 `docs/rag-evaluation/guides/baseline.template.jsonl` 复制为本地数据集，例如 `datasets/rag-baseline.jsonl`。模板行带 `"labelStatus":"todo"`，仅提示问题类别，不会进入评估。每行应填入真实知识库中的问题和标签：
 
 ```json
 {"id":"error-code-01","category":"错误码","tenantId":"真实租户 UUID","knowledgeBaseId":"真实知识库 UUID","query":"RUN_CANCELLED 在何时发送？","relevantChunkIds":["真实 Milvus Chunk ID"],"noAnswer":false}

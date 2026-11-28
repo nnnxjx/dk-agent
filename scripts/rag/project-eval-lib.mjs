@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 
-export const datasetDir = resolve('datasets/rag-project-v1');
+export const datasetDir = resolve('datasets/rag/project-docs/v1');
 export const normalize = (text) => String(text).replace(/\s+/g, ' ').trim();
 export const hash = (text) => createHash('sha256').update(text).digest('hex');
 export const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'));

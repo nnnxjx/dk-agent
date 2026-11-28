@@ -6,9 +6,9 @@ import { loadDataset, readJson, writeJson, hash } from './project-eval-lib.mjs';
 import { compareReports } from './project-compare-lib.mjs';
 
 const [
-  baselinePath = 'reports/rag-baseline/project-step4-v1-no-rerank-20261128',
-  rerankPath = 'reports/rag-baseline/project-step4-v1',
-  outPath = 'reports/rag-baseline/project-step4-comparison-20261128',
+  baselinePath = 'reports/rag-baseline/step4-expanded/project-step4-v1-no-rerank-20261128',
+  rerankPath = 'reports/rag-baseline/step4-expanded/project-step4-v1',
+  outPath = 'reports/rag-baseline/step4-expanded/project-step4-comparison-20261128',
 ] = process.argv.slice(2);
 const data = await loadDataset();
 const questions = data.questions.filter((q) => q.split === 'dev');
@@ -127,15 +127,15 @@ const lines = [
   '',
   '## 文件位置与复现',
   '',
-  `- 原合并逐题与统计：[${baselinePath}](../${baselinePath}/)。`,
-  `- 重排逐题与统计：[${rerankPath}](../${rerankPath}/)。`,
-  `- 对比统计与逐题改善／退步 ID：[comparison.json](../${outPath}/comparison.json)。`,
-  '- [对比脚本](../scripts/rag/project-compare.mjs)：离线检查配置、题目和标签一致性，重新统计并生成本文。',
-  '- [对比校验逻辑](../scripts/rag/project-compare-lib.mjs)：拒绝未完成、不同配置、重复或缺少题目的对比。',
-  '- [此前的来源与引文复核记录](rag-step4-review.md)：本轮沿用相同标签，没有按结果修改分数。',
+  `- 原合并逐题与统计：[${baselinePath}](../../../../${baselinePath})。`,
+  `- 重排逐题与统计：[${rerankPath}](../../../../${rerankPath})。`,
+  `- 对比统计与逐题改善／退步 ID：[comparison.json](../../../../${outPath}/comparison.json)。`,
+  '- [对比脚本](../../../../scripts/rag/project-compare.mjs)：离线检查配置、题目和标签一致性，重新统计并生成本文。',
+  '- [对比校验逻辑](../../../../scripts/rag/project-compare-lib.mjs)：拒绝未完成、不同配置、重复或缺少题目的对比。',
+  '- [此前的来源与引文复核记录](review.md)：本轮沿用相同标签，没有按结果修改分数。',
   '',
   '```powershell',
-  "$env:RAG_PROJECT_BINDING='reports/rag-baseline/project-step4-v1/binding.json'",
+  "$env:RAG_PROJECT_BINDING='reports/rag-baseline/step4-expanded/project-step4-v1/binding.json'",
   "$env:RAG_RERANK_ENABLED='false'",
   `node --env-file=.env scripts/rag/project-eval.mjs retrieval dev ${baselinePath}`,
   `node --env-file=.env scripts/rag/project-eval.mjs answers dev ${baselinePath}`,
@@ -151,11 +151,11 @@ const lines = [
   '可用本轮同题对比替代简历中仅基于步骤三 7 题的跨库数据，但必须注明“81 道有答案开发题”和相应指标口径。此题库不是独立人工审核的生产问答集，7 库共 29 块仍然有限。不能把检索证据覆盖的提升直接表述为回答准确率提升。',
   '',
 ];
-await writeFile('docs/rag-step4-comparison.md', lines.join('\n'));
+await writeFile('docs/rag-evaluation/results/step4-expanded/comparison.md', lines.join('\n'));
 console.log(
   JSON.stringify(
     {
-      report: 'docs/rag-step4-comparison.md',
+      report: 'docs/rag-evaluation/results/step4-expanded/comparison.md',
       json: resolve(outPath, 'comparison.json'),
       candidateSetDifferences: r.differentCandidateSets.length,
       retrieval: Object.fromEntries(

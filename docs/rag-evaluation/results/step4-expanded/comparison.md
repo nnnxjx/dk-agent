@@ -72,18 +72,18 @@ Agent 自主决定检索 query、TopK 和调用次数，问答结果不能解释
 
 ## 文件位置与复现
 
-- 原合并逐题与统计：[reports/rag-baseline/project-step4-v1-no-rerank-20261128](../reports/rag-baseline/project-step4-v1-no-rerank-20261128/)。
-- 重排逐题与统计：[reports/rag-baseline/project-step4-v1](../reports/rag-baseline/project-step4-v1/)。
-- 对比统计与逐题改善／退步 ID：[comparison.json](../reports/rag-baseline/project-step4-comparison-20261128/comparison.json)。
-- [对比脚本](../scripts/rag/project-compare.mjs)：离线检查配置、题目和标签一致性，重新统计并生成本文。
-- [对比校验逻辑](../scripts/rag/project-compare-lib.mjs)：拒绝未完成、不同配置、重复或缺少题目的对比。
-- [此前的来源与引文复核记录](rag-step4-review.md)：本轮沿用相同标签，没有按结果修改分数。
+- 原合并逐题与统计：[reports/rag-baseline/step4-expanded/project-step4-v1-no-rerank-20261128](../../../../reports/rag-baseline/step4-expanded/project-step4-v1-no-rerank-20261128)。
+- 重排逐题与统计：[reports/rag-baseline/step4-expanded/project-step4-v1](../../../../reports/rag-baseline/step4-expanded/project-step4-v1)。
+- 对比统计与逐题改善／退步 ID：[comparison.json](../../../../reports/rag-baseline/step4-expanded/project-step4-comparison-20261128/comparison.json)。
+- [对比脚本](../../../../scripts/rag/project-compare.mjs)：离线检查配置、题目和标签一致性，重新统计并生成本文。
+- [对比校验逻辑](../../../../scripts/rag/project-compare-lib.mjs)：拒绝未完成、不同配置、重复或缺少题目的对比。
+- [此前的来源与引文复核记录](review.md)：本轮沿用相同标签，没有按结果修改分数。
 
 ```powershell
-$env:RAG_PROJECT_BINDING='reports/rag-baseline/project-step4-v1/binding.json'
+$env:RAG_PROJECT_BINDING='reports/rag-baseline/step4-expanded/project-step4-v1/binding.json'
 $env:RAG_RERANK_ENABLED='false'
-node --env-file=.env scripts/rag/project-eval.mjs retrieval dev reports/rag-baseline/project-step4-v1-no-rerank-20261128
-node --env-file=.env scripts/rag/project-eval.mjs answers dev reports/rag-baseline/project-step4-v1-no-rerank-20261128
+node --env-file=.env scripts/rag/project-eval.mjs retrieval dev reports/rag-baseline/step4-expanded/project-step4-v1-no-rerank-20261128
+node --env-file=.env scripts/rag/project-eval.mjs answers dev reports/rag-baseline/step4-expanded/project-step4-v1-no-rerank-20261128
 Remove-Item Env:RAG_PROJECT_BINDING
 Remove-Item Env:RAG_RERANK_ENABLED
 node scripts/rag/project-compare.mjs

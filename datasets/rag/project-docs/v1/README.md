@@ -10,6 +10,8 @@
 - 题目回答的是这些文档的内容，不意味着已测试对应业务 API 的真实运行行为。文档中的配置、示例和约束也不自动代表生产部署状态。
 - 问题、参考答案、原文引用、评分要点由本轮 Agent 编写并检查原文；尚未经过独立人工审核，不宣称是人工金标准。每题 `evidence.line` 为快照行号，`quote` 为逐字原文。
 - 组合题与对应单项题用 `familyId` 归组，同一组不跨开发／测试集。此规则针对显式分组，不保证消除了全部隐含语义重叠；正式验收前仍需人工审核题库。
+- 107 题共 91 个事实家族，初版按首次出现顺序约每 4 个家族留 1 个作测试：69 个开发家族共 81 题，22 个测试家族共 26 题，约 76%/24%。这不是按成绩挑题，也不是必须采用 81 题的固定要求；初版未做独立人工审定的随机分层抽样。
+- 开发集用于比较方案、分析失败和调参。保留测试集在标注审核、语料与模型、分块及检索／重排／评分配置冻结后执行最终验收，两种待比较方案使用相同保留题。若查看测试结果后据此调参，应另补新的保留测试题。
 - 本轮增加的是 Markdown 项目资料，并未覆盖 PDF 解析、复杂表格、旧版本冲突或用户真实问答流量；107 题、29 个分块仍属于有限规模的首轮扩充。
 
 ## 文件地图
@@ -20,17 +22,19 @@
 | `corpus/*.md` | 7 份冻结原文；唯一允许入库的内容。后续原文变化不会静默更改本轮语料 |
 | `questions.jsonl` | 每行一道题：ID、类别、事实家族、问题、参考答案、固定评分要点、原文引用、划分、`noAnswer=false`。禁止入库 |
 | `questions.md` | 题库阅读版，方便人工核对问题、答案和证据；由 JSONL 派生，不供执行脚本读取，禁止入库 |
-| `../../scripts/rag/project-eval-lib.mjs` | 校验原文哈希、证据行号、标签与划分；按来源及引用匹配证据，汇总检索指标 |
-| `../../scripts/rag/project-eval.mjs` | 校验、创建知识库、真实跨库检索、真实 Agent 作答及自动评分的命令入口 |
-| `../../scripts/rag/project-eval-lib.test.mjs` | 来源混淆、重复证据、漏证据、失败分母、事实家族划分的回归测试 |
-| `../../scripts/rag/project-compare.mjs` | 同一开发集上原合并与全局重排的离线对比入口，校验两组配置并生成对比 JSON 和中文报告 |
-| `../../scripts/rag/project-compare-lib.mjs` | 检查完成度、题目、标注、配置一致性；重算指标、逐题改善／退步及候选集合差异 |
-| `../../scripts/rag/project-compare-lib.test.mjs` | 防止未完成、错题目或不同配置被错误比较的测试 |
-| `../../docs/rag-step4-results.md` | 本轮可读结果、限制和样例复核 |
-| `../../docs/rag-step4-review.md` | 来源严格匹配漏算等价证据、引文核验差异等具体复核记录；不回改本轮分数 |
-| `../../docs/rag-step4-comparison.md` | 2026-11-28 补跑原合并后的同题对比；使用本数据集，不使用步骤三的 7 题 |
+| `../../../../scripts/rag/project-eval-lib.mjs` | 校验原文哈希、证据行号、标签与划分；按来源及引用匹配证据，汇总检索指标 |
+| `../../../../scripts/rag/project-eval.mjs` | 校验、创建知识库、真实跨库检索、真实 Agent 作答及自动评分的命令入口 |
+| `../../../../scripts/rag/project-eval-lib.test.mjs` | 来源混淆、重复证据、漏证据、失败分母、事实家族划分的回归测试 |
+| `../../../../scripts/rag/project-compare.mjs` | 同一开发集上原合并与全局重排的离线对比入口，校验两组配置并生成对比 JSON 和中文报告 |
+| `../../../../scripts/rag/project-compare-lib.mjs` | 检查完成度、题目、标注、配置一致性；重算指标、逐题改善／退步及候选集合差异 |
+| `../../../../scripts/rag/project-compare-lib.test.mjs` | 防止未完成、错题目或不同配置被错误比较的测试 |
+| `../../../../docs/rag-evaluation/results/step4-expanded/baseline.md` | 本轮可读结果、限制和样例复核 |
+| `../../../../docs/rag-evaluation/results/step4-expanded/review.md` | 来源严格匹配漏算等价证据、引文核验差异等具体复核记录；不回改本轮分数 |
+| `../../../../docs/rag-evaluation/results/step4-expanded/comparison.md` | 2026-11-28 补跑原合并后的同题对比；使用本数据集，不使用步骤三的 7 题 |
 
-本地结果默认位于 `reports/rag-baseline/project-step4-v1/`，受 Git 忽略，需另行保留：
+本地结果默认位于 `reports/rag-baseline/step4-expanded/project-step4-v1/`，受 Git 忽略，需另行保留：
+
+报告已按步骤归档，原步骤一和扩充单库实验统一放到 `step1-single-kb/`；全部目录与常用统计入口见 [报告目录索引](../../../../docs/rag-evaluation/README.md)。历史 JSON 的分数、内容和签名未修改，原路径字段保留为运行溯源信息。
 
 | 输出文件 | 作用 |
 | --- | --- |
@@ -69,18 +73,32 @@ node --test scripts/rag/project-eval-lib.test.mjs scripts/rag/answer-judge.test.
 复用相同知识库、对比关闭重排的配置示例：
 
 ```powershell
-$env:RAG_PROJECT_BINDING='reports/rag-baseline/project-step4-v1/binding.json'
+$env:RAG_PROJECT_BINDING='reports/rag-baseline/step4-expanded/project-step4-v1/binding.json'
 $env:RAG_RERANK_ENABLED='false'
-node --env-file=.env scripts/rag/project-eval.mjs retrieval dev reports/rag-baseline/project-step4-v1-no-rerank
+node --env-file=.env scripts/rag/project-eval.mjs retrieval dev reports/rag-baseline/step4-expanded/project-step4-v1-no-rerank
 Remove-Item Env:RAG_PROJECT_BINDING
 Remove-Item Env:RAG_RERANK_ENABLED
 ```
 
-上述命令是复现示例。2026-11-28 补跑原合并的实际输出目录为 `reports/rag-baseline/project-step4-v1-no-rerank-20261128/`，复用原有 `binding.json`；重排组仍为 `project-step4-v1/`。对比 JSON 输出在 `reports/rag-baseline/project-step4-comparison-20261128/comparison.json`，可读报告见 `docs/rag-step4-comparison.md`。
+上述命令是复现示例。2026-11-28 补跑原合并的实际输出目录为 `reports/rag-baseline/step4-expanded/project-step4-v1-no-rerank-20261128/`，复用原有 `binding.json`；重排组仍为 `project-step4-v1/`。对比 JSON 输出在 `reports/rag-baseline/step4-expanded/project-step4-comparison-20261128/comparison.json`，可读报告见 `docs/rag-evaluation/results/step4-expanded/comparison.md`。
 
 两组报告完成后运行 `node scripts/rag/project-compare.mjs` 可离线生成对比，脚本拒绝未跑完或配置、题目、固定标签不一致的报告。`RAG_PROJECT_TOPKS` 可显式指定如 `3,5,10`；默认即这三组，对比脚本要求三组齐全。不运行测试集；最终冻结方案并审核标签后才显式指定 `test`。
 
 ## 指标解释
+
+### 扩充题库的单库对照（2026-11-28）
+
+此前跨库评测保持原样。另将同一 7 份语料放进单个新知识库，用相同 81 道开发题分别运行 Dense、BM25、Hybrid 的 Top3/5/10，共 729 条检索，不调用全局重排或生成模型，保留测试题未运行。
+
+- 执行脚本：`scripts/rag/single-kb-eval.mjs`，支持 `prepare|compare` 和 `pilot|dev|test`；本轮运行 `prepare dev`、`compare dev`。
+- 绑定及统计：`scripts/rag/single-kb-eval-lib.mjs`，将原文证据关联实际 Chunk ID，保留证据组。
+- 本地绑定：`reports/rag-baseline/step1-single-kb/single-kb-expanded-20261128/binding.json`，包含 `questions[].relevantChunkIds`、`questions[].evidenceGroups`，与已有跨库绑定分开保存。
+- 九组统计：`reports/rag-baseline/step1-single-kb/single-kb-expanded-20261128/dev-comparison.json`，看 `reports[].metrics`；每组包含 81 道逐题记录。
+- 可读结果与命令：[扩充单库报告](../../../../docs/rag-evaluation/results/step1-single-kb/expanded.md)，由 `scripts/rag/single-kb-report.mjs` 离线复算逐题分数后生成。
+
+单库 Recall/Precision 沿用步骤一按标注 Chunk ID 计数的公式；额外报告证据组 Recall 和完整证据覆盖。不能把单库的 Chunk Recall 与跨库的证据 Recall 混为同一统计口径。
+
+### 跨库检索与问答
 
 检索直接调用真实跨库 Hybrid 工具，固定 query 与 TopK，不让生成模型参与选取 query。
 

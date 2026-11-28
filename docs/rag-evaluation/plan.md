@@ -21,13 +21,13 @@ RAG 的基本链路为：文档解析、分块和入库 → 检索相关片段 �
 
 相关文件：
 
-- [固定题库](../datasets/rag-hybrid-v1/questions.jsonl)
-- [语料与题库说明](../datasets/rag-hybrid-v1/评测题说明.md)
-- [语料清单](../datasets/rag-hybrid-v1/manifest.json)
-- [Hybrid 评测脚本](../scripts/rag/hybrid-eval.mjs)
-- [v2 历史结果汇总](../reports/rag-baseline/hybrid-v2/summary.json)
-- [RAG 搜索服务](../src/rag/rag.service.ts)
-- [Agent 检索工具](../src/tools/rag-retrieval.tool.ts)
+- [固定题库](../../datasets/rag/single-kb/v1/questions.jsonl)
+- [语料与题库说明](../../datasets/rag/single-kb/v1/评测题说明.md)
+- [语料清单](../../datasets/rag/single-kb/v1/manifest.json)
+- [Hybrid 评测脚本](../../scripts/rag/hybrid-eval.mjs)
+- [v2 历史结果汇总](../../reports/rag-baseline/step1-single-kb/hybrid-v2/summary.json)
+- [RAG 搜索服务](../../src/rag/rag.service.ts)
+- [Agent 检索工具](../../src/tools/rag-retrieval.tool.ts)
 
 历史 v2 使用两份固定文档、16 个分块，chunkSize=1000、chunkOverlap=200、TopK=5。题库共 40 题，其中 32 题有答案、8 题无答案；开发集 30 题，测试集 10 题。
 
@@ -113,16 +113,16 @@ RAG 的基本链路为：文档解析、分块和入库 → 检索相关片段 �
 脚本运行示例，仅适用于对应知识库和依赖已经准备好的环境：
 
 ```powershell
-node --env-file=.env scripts/rag/hybrid-eval.mjs prepare dev "RAG 评测 v2" reports/rag-baseline/hybrid-v2
-node --env-file=.env scripts/rag/hybrid-eval.mjs evaluate dev "RAG 评测 v2" reports/rag-baseline/hybrid-v2
+node --env-file=.env scripts/rag/hybrid-eval.mjs prepare dev "RAG 评测 v2" reports/rag-baseline/step1-single-kb/hybrid-v2
+node --env-file=.env scripts/rag/hybrid-eval.mjs evaluate dev "RAG 评测 v2" reports/rag-baseline/step1-single-kb/hybrid-v2
 ```
 
 `prepare` 会重新写入本地绑定文件。正式实验使用新的输出目录保存记录。多模式对比与单配置命令：
 
 ```powershell
-node --env-file=.env scripts/rag/hybrid-eval.mjs prepare dev "RAG 评测 v2" reports/rag-baseline/retrieval-step1-20261126
-node --env-file=.env scripts/rag/hybrid-eval.mjs compare dev "RAG 评测 v2" reports/rag-baseline/retrieval-step1-20261126
-node --env-file=.env scripts/rag/hybrid-eval.mjs evaluate dev "RAG 评测 v2" reports/rag-baseline/retrieval-step1-20261126 bm25 5
+node --env-file=.env scripts/rag/hybrid-eval.mjs prepare dev "RAG 评测 v2" reports/rag-baseline/step1-single-kb/retrieval-step1-20261126
+node --env-file=.env scripts/rag/hybrid-eval.mjs compare dev "RAG 评测 v2" reports/rag-baseline/step1-single-kb/retrieval-step1-20261126
+node --env-file=.env scripts/rag/hybrid-eval.mjs evaluate dev "RAG 评测 v2" reports/rag-baseline/step1-single-kb/retrieval-step1-20261126 bm25 5
 node --test scripts/rag/eval-metrics.test.mjs
 ```
 
@@ -138,7 +138,7 @@ node --test scripts/rag/eval-metrics.test.mjs
 | BM25 | 5 | 100% | 100% | 21.67% | 0.7965 | 100% | 10.32 | 0 |
 | BM25 | 10 | 100% | 100% | 10.83% | 0.7965 | 100% | 8.77 | 0 |
 
-逐题结果与分类汇总保存在本地 [本轮报告目录](../reports/rag-baseline/retrieval-step1-20261126/)，该目录被 Git 忽略。
+逐题结果与分类汇总保存在本地 [本轮报告目录](../../reports/rag-baseline/step1-single-kb/retrieval-step1-20261126)，该目录被 Git 忽略。
 
 - Top3 漏召回 `hybrid-006` 和 `hybrid-007`，Top5 中分别排第 4、第 5。
 - Top10 相比 Top5 没有增加已标注证据的召回，按固定 K 作分母的 Precision 降低。
@@ -161,7 +161,7 @@ node --test scripts/rag/eval-metrics.test.mjs
 | Hybrid | 5 | 100% | 100% | 21.67% | 0.9236 | 100% | 289.49 | 0 |
 | Hybrid | 10 | 100% | 100% | 10.83% | 0.9236 | 100% | 182.66 | 0 |
 
-汇总：[九组本地 JSON 报告](../reports/rag-baseline/retrieval-step1-20261126/step1-summary.json)。该汇总同时保留各配置的分类指标，逐题结果见同目录原始报告。
+汇总：[九组本地 JSON 报告](../../reports/rag-baseline/step1-single-kb/retrieval-step1-20261126/step1-summary.json)。该汇总同时保留各配置的分类指标，逐题结果见同目录原始报告。
 
 结论与限制：
 
@@ -228,9 +228,11 @@ node --test scripts/rag/eval-metrics.test.mjs
 
 已冻结 7 份真实项目文档，整理 107 道有答案题（开发集 81、保留测试集 26），入库为 7 个独立评测知识库、29 个分块。首轮范围是 Markdown 文档问答，尚不覆盖 PDF 解析、生产问答流量或复杂版本冲突。
 
-文件位置、职责、命令和统计口径见 [第四步数据集说明](../datasets/rag-project-v1/README.md)；243 条检索与 81 条问答的结果及限制见 [第四步首轮结果](rag-step4-results.md)，来源匹配及引文校验的具体限制见 [复核记录](rag-step4-review.md)。题目及参考答案由本轮 Agent 标注并验证原文，尚未经过独立人工审核；保留测试集未运行。
+文件位置、职责、命令和统计口径见 [第四步数据集说明](../../datasets/rag/project-docs/v1/README.md)；243 条检索与 81 条问答的结果及限制见 [第四步首轮结果](results/step4-expanded/baseline.md)，来源匹配及引文校验的具体限制见 [复核记录](results/step4-expanded/review.md)。题目及参考答案由本轮 Agent 标注并验证原文，尚未经过独立人工审核；保留测试集未运行。
 
-2026-11-28 已补跑原 `rank_interleave` 合并策略，复用相同知识库绑定、81 道开发题、标注、源码、模型和提示词，与第四步原重排结果对照（不使用步骤三 7 题）。两组各 243 条检索、81 条问答，均无运行或评分失败。Top3 完整标注证据覆盖率 39.51% → 93.83%，Top5 为 69.14% → 96.30%；自动核心正确率 88.89% → 100%，自动完整性 89.51% → 100%，自动忠实度 97.59% → 97.91%。两轮为单次不同时间运行，LLM 分数需复核，不能当作生产准确率。配置校验、逐题改善／退步及完整文件入口见 [第四步原合并与重排对比](rag-step4-comparison.md)。
+2026-11-28 已补跑原 `rank_interleave` 合并策略，复用相同知识库绑定、81 道开发题、标注、源码、模型和提示词，与第四步原重排结果对照（不使用步骤三 7 题）。两组各 243 条检索、81 条问答，均无运行或评分失败。Top3 完整标注证据覆盖率 39.51% → 93.83%，Top5 为 69.14% → 96.30%；自动核心正确率 88.89% → 100%，自动完整性 89.51% → 100%，自动忠实度 97.59% → 97.91%。两轮为单次不同时间运行，LLM 分数需复核，不能当作生产准确率。配置校验、逐题改善／退步及完整文件入口见 [第四步原合并与重排对比](results/step4-expanded/comparison.md)。
+
+2026-11-28 在提交 `94a96d8` 后，另将 7 份文档合并入一个新评测知识库（29 块），用相同 81 道有答案开发题补测原生单库 Dense/BM25/Hybrid 的 Top3/5/10，共 729 条检索，失败 0。Top5 的 Chunk Recall 分别为 85.80% / 97.53% / 96.30%，MRR 分别为 0.6751 / 0.8056 / 0.8004；Hybrid 优于 Dense，但该题库上 BM25 的 Top5 略优于 Hybrid。Hybrid Top10 Chunk Recall 为 100%。本轮不经过跨库合并或重排，26 道保留测试题未运行，逐题 Chunk ID 与证据组映射保存在新的单库 binding 中。完整九组结果、绑定及脚本位置见 [扩充题库单库对比](results/step1-single-kb/expanded.md)。
 
 此前单库只有两份文档、16 个分块，样本规模有限。第四步逐步扩到约 100～200 题，并加入实际使用中的文档。
 
@@ -292,9 +294,9 @@ node --test scripts/rag/eval-metrics.test.mjs
 
 ### 已实现的文件
 
-- [评测入口](../scripts/rag/answer-eval.mjs)
-- [SSE 解析、Trace 提取与指标汇总](../scripts/rag/answer-eval-lib.mjs)
-- [事件解析与指标测试](../scripts/rag/answer-eval-lib.test.mjs)
+- [评测入口](../../scripts/rag/answer-eval.mjs)
+- [SSE 解析、Trace 提取与指标汇总](../../scripts/rag/answer-eval-lib.mjs)
+- [事件解析与指标测试](../../scripts/rag/answer-eval-lib.test.mjs)
 
 ### 实际覆盖范围
 
@@ -321,7 +323,7 @@ node --test scripts/rag/eval-metrics.test.mjs
 
 ### 运行命令
 
-先确认第一步的 `reports/rag-baseline/retrieval-step1-20261126/binding.json` 存在且对应当前固定语料，再运行：
+先确认第一步的 `reports/rag-baseline/step1-single-kb/retrieval-step1-20261126/binding.json` 存在且对应当前固定语料，再运行：
 
 ```powershell
 node --test scripts/rag/answer-eval-lib.test.mjs
@@ -331,7 +333,7 @@ node --env-file=.env scripts/rag/answer-eval.mjs dev
 
 先导选择 `hybrid-001/003/006/030/033`，覆盖普通问题、枚举、精确模型与维度、多处依据和无答案。先导通过并人工抽查后再运行完整 30 道开发题；`dev` 可复用同配置下已成功评分的先导结果。原有保留测试集不参与本轮调试。
 
-默认输出目录为 `reports/rag-baseline/answer-step2-20261126/`，包含 settings、逐题 JSON 和阶段汇总，目录被 Git 忽略。脚本不会修改知识库内容，不创建生产用户或持久化聊天记录。
+默认输出目录为 `reports/rag-baseline/step2-answer/answer-step2-20261126/`，包含 settings、逐题 JSON 和阶段汇总，目录被 Git 忽略。脚本不会修改知识库内容，不创建生产用户或持久化聊天记录。
 
 ### 执行状态
 
@@ -345,7 +347,7 @@ node --env-file=.env scripts/rag/answer-eval.mjs dev
 
 ### 第二步先导复核与修正
 
-原先导输出保留在 `reports/rag-baseline/answer-step2-20261126/`；修正后的正式评测目录为 `reports/rag-baseline/answer-step2-20261126-v2/`。外部服务调用经后续明确审批已运行，前述审批拦截仅为历史记录。
+原先导输出保留在 `reports/rag-baseline/step2-answer/answer-step2-20261126/`；修正后的正式评测目录为 `reports/rag-baseline/step2-answer/answer-step2-20261126-v2/`。外部服务调用经后续明确审批已运行，前述审批拦截仅为历史记录。
 
 修正后五题均完成生成和评分，核心答案正确、无运行或评分失败，无答案题明确拒答。实际调用参数通过测试服务包装工具 `invoke` 单独记录在 `toolExecutions`，避免依赖 SSE 中可能为空的参数增量；保留原始 SSE 以定位该观察结果，不修改业务流式代码。
 
@@ -364,10 +366,10 @@ node --env-file=.env scripts/rag/answer-eval.mjs dev
 
 ### 第二步完整开发集结果（2026-11-26）
 
-正式目录：[answer-step2-20261126-v2](../reports/rag-baseline/answer-step2-20261126-v2/)。
+正式目录：[answer-step2-20261126-v2](../../reports/rag-baseline/step2-answer/answer-step2-20261126-v2)。
 
-- [汇总与逐题自动判断](../reports/rag-baseline/answer-step2-20261126-v2/dev-summary.json)
-- [字面规则检查与待复核陈述](../reports/rag-baseline/answer-step2-20261126-v2/review.json)
+- [汇总与逐题自动判断](../../reports/rag-baseline/step2-answer/answer-step2-20261126-v2/dev-summary.json)
+- [字面规则检查与待复核陈述](../../reports/rag-baseline/step2-answer/answer-step2-20261126-v2/review.json)
 - 原始逐题 JSON 包含完整事件、工具执行参数、实际片段、答案、评分要点和引文。
 
 | 指标 | 首轮开发集结果 |
@@ -403,12 +405,12 @@ node --env-file=.env scripts/rag/answer-eval.mjs dev
 
 ### 实现与运行范围
 
-- [合成语料与场景](../datasets/rag-cross-kb-v1/fixture.json)
-- [运行说明](../datasets/rag-cross-kb-v1/README.md)
-- [评测脚本](../scripts/rag/cross-kb-eval.mjs)
-- [首轮汇总](../reports/rag-baseline/cross-kb-step3-20261127/summary.json)
-- [各库候选及合并结果](../reports/rag-baseline/cross-kb-step3-20261127/retrieval-results.json)
-- [Agent 问答与事件](../reports/rag-baseline/cross-kb-step3-20261127/agent-results.json)
+- [合成语料与场景](../../datasets/rag/cross-kb-synthetic/v1/fixture.json)
+- [运行说明](../../datasets/rag/cross-kb-synthetic/v1/README.md)
+- [评测脚本](../../scripts/rag/cross-kb-eval.mjs)
+- [首轮汇总](../../reports/rag-baseline/step3-cross-kb/cross-kb-step3-20261127/summary.json)
+- [各库候选及合并结果](../../reports/rag-baseline/step3-cross-kb/cross-kb-step3-20261127/retrieval-results.json)
+- [Agent 问答与事件](../../reports/rag-baseline/step3-cross-kb/cross-kb-step3-20261127/agent-results.json)
 
 创建了七个独立测试知识库，名称带运行后缀 `c2a45265`：干扰1～4、霁云配置、霁云运维、其他租户。前六个属于同一新建测试租户，第七个属于另一个新建测试租户。知识库记录真实写入 MySQL、文档通过 RagService 分块和 Embedding 后真实写入 Milvus，共九个分块。测试资源保留，绑定文件记录其租户和知识库 ID，未修改已有知识库或生产检索算法。
 
@@ -454,7 +456,7 @@ node --env-file=.env scripts/rag/answer-eval.mjs dev
 
 ### 实现方式
 
-跨库工具先汇集所有库的 Hybrid 候选，按文本去重并保留全部来源，调用 [GlobalRerankService](../src/rag/global-rerank.service.ts)，再按统一分数截取最终 TopK。单库搜索 API 的 Dense、BM25、Hybrid 行为保持原样。Supervisor 和 DAG 两条路径均注入重排服务。
+跨库工具先汇集所有库的 Hybrid 候选，按文本去重并保留全部来源，调用 [GlobalRerankService](../../src/rag/global-rerank.service.ts)，再按统一分数截取最终 TopK。单库搜索 API 的 Dense、BM25、Hybrid 行为保持原样。Supervisor 和 DAG 两条路径均注入重排服务。
 
 重排通过 SiliconFlow 兼容的 `/rerank` API，默认模型 `BAAI/bge-reranker-v2-m3`；配置见 `.env.example` 的 `RAG_RERANK_*`。已有 SiliconFlow Embedding 端点可自动复用；也支持独立端点和 Key。默认启用，未配置时明确回退，设置 `RAG_RERANK_ENABLED=false` 可关闭。
 
@@ -469,7 +471,7 @@ node --env-file=.env scripts/rag/answer-eval.mjs dev
 
 ### 跨库同语料对比
 
-使用原有七库绑定，没有重建语料。新输出目录为 [cross-kb-step3-rerank-20261127](../reports/rag-baseline/cross-kb-step3-rerank-20261127/)，原基线目录保留。
+使用原有七库绑定，没有重建语料。新输出目录为 [cross-kb-step3-rerank-20261127](../../reports/rag-baseline/step3-cross-kb/cross-kb-step3-rerank-20261127)，原基线目录保留。
 
 | 指标 | 原 Top3 | 重排 Top3 | 原 Top5 | 重排 Top5 |
 | --- | ---: | ---: | ---: | ---: |
@@ -490,8 +492,8 @@ Top10 两种策略均为 100% 完整证据命中。18 次非空候选评测均�
 复现新对比：
 
 ```powershell
-$env:RAG_CROSS_BINDING='reports/rag-baseline/cross-kb-step3-20261127/binding.json'
-node --env-file=.env scripts/rag/cross-kb-eval.mjs evaluate reports/rag-baseline/cross-kb-step3-rerank-20261127
+$env:RAG_CROSS_BINDING='reports/rag-baseline/step3-cross-kb/cross-kb-step3-20261127/binding.json'
+node --env-file=.env scripts/rag/cross-kb-eval.mjs evaluate reports/rag-baseline/step3-cross-kb/cross-kb-step3-rerank-20261127
 ```
 
 重新运行时建议使用新输出目录保留历史。关闭重排可用 `RAG_RERANK_ENABLED=false`，其余配置与语料保持一致。
@@ -499,7 +501,7 @@ node --env-file=.env scripts/rag/cross-kb-eval.mjs evaluate reports/rag-baseline
 
 ### 单库问答回归与最终验证
 
-重新运行步骤二完整 30 题，输出 [answer-step2-rerank-20261127/dev-summary.json](../reports/rag-baseline/answer-step2-rerank-20261127/dev-summary.json)。没有复用旧生成结果。
+重新运行步骤二完整 30 题，输出 [answer-step2-rerank-20261127/dev-summary.json](../../reports/rag-baseline/step2-answer/answer-step2-rerank-20261127/dev-summary.json)。没有复用旧生成结果。
 
 | 指标 | 原问答基线 | 启用重排后 |
 | --- | ---: | ---: |
@@ -524,11 +526,11 @@ node --env-file=.env scripts/rag/cross-kb-eval.mjs evaluate reports/rag-baseline
 
 ### 文件与执行
 
-- [固定参考答案和要点](../datasets/rag-cross-kb-v1/grading-rubric.json)：五道有答案题、两道不可回答题；该文件不入库。
-- [公共评审模块](../scripts/rag/answer-judge.mjs)：从步骤二提取的提示词、结构校验、引文检查，步骤二入口也改为调用该公共模块。保留原始标签 `rawJudgment` 与校验后标签 `judgment`。
-- [跨库补评脚本](../scripts/rag/cross-kb-grade.mjs)：按场景交替评审两种算法，不向评审提供算法名称或排序分数，固定同一模型、温度、参考要点与汇总公式。
-- [对比 JSON](../reports/rag-baseline/cross-kb-grading-20261127/comparison.json)：指标位于 `results.baseline.metrics` 和 `results.rerank.metrics`。
-- [可读对比表](../reports/rag-baseline/cross-kb-grading-20261127/summary.md)。
+- [固定参考答案和要点](../../datasets/rag/cross-kb-synthetic/v1/grading-rubric.json)：五道有答案题、两道不可回答题；该文件不入库。
+- [公共评审模块](../../scripts/rag/answer-judge.mjs)：从步骤二提取的提示词、结构校验、引文检查，步骤二入口也改为调用该公共模块。保留原始标签 `rawJudgment` 与校验后标签 `judgment`。
+- [跨库补评脚本](../../scripts/rag/cross-kb-grade.mjs)：按场景交替评审两种算法，不向评审提供算法名称或排序分数，固定同一模型、温度、参考要点与汇总公式。
+- [对比 JSON](../../reports/rag-baseline/step3-cross-kb/cross-kb-grading-20261127/comparison.json)：指标位于 `results.baseline.metrics` 和 `results.rerank.metrics`。
+- [可读对比表](../../reports/rag-baseline/step3-cross-kb/cross-kb-grading-20261127/summary.md)。
 
 ```powershell
 node --test scripts/rag/answer-judge.test.mjs scripts/rag/answer-eval-lib.test.mjs scripts/rag/eval-metrics.test.mjs

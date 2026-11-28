@@ -11,21 +11,21 @@ require('ts-node/register/transpile-only');
 const { ConfigService } = require('@nestjs/config');
 const { LLMService } = require('../../src/llm/llm.service.ts');
 const configuration = require('../../src/common/config/configuration.ts').default;
-const outDir = resolve(process.argv[2] || 'reports/rag-baseline/cross-kb-grading-20261127');
+const outDir = resolve(process.argv[2] || 'reports/rag-baseline/step3-cross-kb/cross-kb-grading-20261127');
 const hash = (s) => createHash('sha256').update(s).digest('hex');
 const read = async (p) => JSON.parse(await readFile(p,'utf8'));
-const fixture = await read('datasets/rag-cross-kb-v1/fixture.json');
-const rubricRaw = await readFile('datasets/rag-cross-kb-v1/grading-rubric.json','utf8');
+const fixture = await read('datasets/rag/cross-kb-synthetic/v1/fixture.json');
+const rubricRaw = await readFile('datasets/rag/cross-kb-synthetic/v1/grading-rubric.json','utf8');
 const rubric = JSON.parse(rubricRaw);
 const variants = [
-  { name: 'baseline', path: 'reports/rag-baseline/cross-kb-step3-20261127/agent-results.json' },
-  { name: 'rerank', path: 'reports/rag-baseline/cross-kb-step3-rerank-20261127/agent-results.json' },
+  { name: 'baseline', path: 'reports/rag-baseline/step3-cross-kb/cross-kb-step3-20261127/agent-results.json' },
+  { name: 'rerank', path: 'reports/rag-baseline/step3-cross-kb/cross-kb-step3-rerank-20261127/agent-results.json' },
 ];
 for (const variant of variants) {
   variant.sourceRaw = await readFile(variant.path,'utf8');
   variant.data = JSON.parse(variant.sourceRaw);
   const runSummary = await read(variant.path.replace('agent-results.json', 'summary.json'));
-  if (runSummary.fixtureHash !== hash(await readFile('datasets/rag-cross-kb-v1/fixture.json','utf8'))) throw new Error('Source fixture hash mismatch');
+  if (runSummary.fixtureHash !== hash(await readFile('datasets/rag/cross-kb-synthetic/v1/fixture.json','utf8'))) throw new Error('Source fixture hash mismatch');
   if (variant.data.rows.length !== fixture.cases.length || new Set(variant.data.rows.map((r)=>r.id)).size !== fixture.cases.length) throw new Error('Source case count/IDs changed');
 }
 const config = new ConfigService(configuration());

@@ -11,8 +11,8 @@ import { MilvusClient } from '@zilliz/milvus2-sdk-node';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 
 const require = createRequire(import.meta.url);
-const datasetDir = resolve('datasets/rag-hybrid-v1');
-const outDir = resolve(process.argv[5] || 'reports/rag-baseline/hybrid-v1');
+const datasetDir = resolve('datasets/rag/single-kb/v1');
+const outDir = resolve(process.argv[5] || 'reports/rag-baseline/step1-single-kb/hybrid-v1');
 const knowledgeBaseName = process.argv[4] || 'RAG 评测 v1';
 const normalize = (value) => value.replace(/\s+/g, ' ').trim();
 const hash = (value) => createHash('sha256').update(value).digest('hex');

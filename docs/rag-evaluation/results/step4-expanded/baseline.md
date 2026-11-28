@@ -1,6 +1,6 @@
 # 第四步首轮结果：真实项目文档、有答案题
 
-本轮创建于 2026-11-27，报告整理时间 2026-11-27T14:26:01.800Z。按用户要求仅含有答案题。
+本轮创建于 2026-11-27，报告整理时间 2026-11-28T13:29:20.807Z。按用户要求仅含有答案题。
 
 当前完成状态：检索 243/243；回答 81/81。开发集已全部完成。
 
@@ -14,18 +14,18 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| [数据集使用说明](../datasets/rag-project-v1/README.md) | 全部文件地图、命令、指标定义与边界 |
-| [语料清单](../datasets/rag-project-v1/manifest.json) | 版本、来源提交、原路径、SHA256、划分数量 |
-| [原文快照](../datasets/rag-project-v1/corpus/) | 唯一入库内容，7 份项目文档 |
-| [固定题库](../datasets/rag-project-v1/questions.jsonl) | 问题、参考答案、固定要点、证据原文及来源行号；不入库 |
-| [执行脚本](../scripts/rag/project-eval.mjs) | 验证、建库、固定 TopK 跨库检索、真实 Agent 问答和评审 |
-| [证据与统计逻辑](../scripts/rag/project-eval-lib.mjs) | 标签验证、来源及引文匹配、检索统计 |
-| [统计回归测试](../scripts/rag/project-eval-lib.test.mjs) | 防止来源混淆、重复计数及失败分母错误 |
-| [本文生成脚本](../scripts/rag/project-eval-report.mjs) | 从本地 JSON 生成可读摘要，不调用模型 |
-| [知识库绑定](../reports/rag-baseline/project-step4-v1/binding.json) | 实际租户、库名／ID／Collection、Chunk 与指纹 |
-| [运行配置](../reports/rag-baseline/project-step4-v1/settings.json) | 模型、提示词、重排开关与源码签名 |
-| [开发集检索报告](../reports/rag-baseline/project-step4-v1/dev-retrieval-summary.json) | `metrics[3/5/10]`、分类指标、最终结果及各库候选 |
-| [开发集问答报告](../reports/rag-baseline/project-step4-v1/dev-answers-summary.json) | `metrics` 与 `rows[].judgment` |
+| [数据集使用说明](../../../../datasets/rag/project-docs/v1/README.md) | 全部文件地图、命令、指标定义与边界 |
+| [语料清单](../../../../datasets/rag/project-docs/v1/manifest.json) | 版本、来源提交、原路径、SHA256、划分数量 |
+| [原文快照](../../../../datasets/rag/project-docs/v1/corpus) | 唯一入库内容，7 份项目文档 |
+| [固定题库](../../../../datasets/rag/project-docs/v1/questions.jsonl) | 问题、参考答案、固定要点、证据原文及来源行号；不入库 |
+| [执行脚本](../../../../scripts/rag/project-eval.mjs) | 验证、建库、固定 TopK 跨库检索、真实 Agent 问答和评审 |
+| [证据与统计逻辑](../../../../scripts/rag/project-eval-lib.mjs) | 标签验证、来源及引文匹配、检索统计 |
+| [统计回归测试](../../../../scripts/rag/project-eval-lib.test.mjs) | 防止来源混淆、重复计数及失败分母错误 |
+| [本文生成脚本](../../../../scripts/rag/project-eval-report.mjs) | 从本地 JSON 生成可读摘要，不调用模型 |
+| [知识库绑定](../../../../reports/rag-baseline/step4-expanded/project-step4-v1/binding.json) | 实际租户、库名／ID／Collection、Chunk 与指纹 |
+| [运行配置](../../../../reports/rag-baseline/step4-expanded/project-step4-v1/settings.json) | 模型、提示词、重排开关与源码签名 |
+| [开发集检索报告](../../../../reports/rag-baseline/step4-expanded/project-step4-v1/dev-retrieval-summary.json) | `metrics[3/5/10]`、分类指标、最终结果及各库候选 |
+| [开发集问答报告](../../../../reports/rag-baseline/step4-expanded/project-step4-v1/dev-answers-summary.json) | `metrics` 与 `rows[].judgment` |
 
 本地报告目录被 Git 忽略，代码提交不包含这些 JSON；本文与题库可随代码追踪。单题检索为 `retrieval-project-XXX-kK.json`，单题回答为 `answers-project-XXX.json`；后者包含事件、工具参数、实际片段、回答、原始和引文校验后的判断。
 

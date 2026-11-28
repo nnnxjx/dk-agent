@@ -70,7 +70,7 @@ Milvus 2.5 文档已提供内置 BM25 全文检索；项目目前使用的 Serve
 
 **交付与通过条件**
 
-- 隔离 Milvus 2.6.24 已健康运行，并完成含 BM25 Function 的 Collection 创建、插入、Dense Search、BM25 Search、Hybrid Search。2026-10-18 的实际烟测均通过，详见 `docs/rag-hybrid-step1-runbook.md`。
+- 隔离 Milvus 2.6.24 已健康运行，并完成含 BM25 Function 的 Collection 创建、插入、Dense Search、BM25 Search、Hybrid Search。2026-10-18 的实际烟测均通过，详见 `docs/rag-evaluation/guides/hybrid-step1-runbook.md`。
 - 正式开发环境的全新卷及 MySQL 旧知识库记录处理方式明确后，才能将应用默认连接切到新实例；旧卷不删除，也不作为自动回滚路径。
 
 ### 步骤 2：设计并验证新版 Collection Schema

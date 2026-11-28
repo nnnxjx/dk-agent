@@ -4,7 +4,7 @@ import {MilvusClient,RRFRanker} from '@zilliz/milvus2-sdk-node';
 import {OpenAIEmbeddings} from '@langchain/openai';
 const require=createRequire(import.meta.url);require('ts-node/register/transpile-only');
 const {hybridCollectionSchema,hybridCollectionIndexes}=require('../../src/rag/hybrid-collection.schema.ts');
-const binding=JSON.parse(await readFile('reports/rag-baseline/hybrid-v1/binding.json','utf8'));
+const binding=JSON.parse(await readFile('reports/rag-baseline/step1-single-kb/hybrid-v1/binding.json','utf8'));
 const client=new MilvusClient({address:`${process.env.MILVUS_HOST||'localhost'}:${process.env.MILVUS_PORT||19530}`,timeout:20000});
 const analyzer={tokenizer:'jieba',filter:['cnalphanumonly','lowercase']};
 const tempName='eval_lowercase_'+Date.now();let created=false;
@@ -30,5 +30,5 @@ const hits=response.results.slice(0,5).map(h=>String(h.id));row.modes[name]={hit
 report.results.push(row);console.log(q.id+' original='+(row.modes.original.rank||'-')+' lowercase='+(row.modes.lowercase.rank||'-'));
 }
 const positives=report.results.filter(r=>!r.noAnswer);for(const mode of ['original','lowercase'])report.metrics[mode]={hitAt5:positives.filter(r=>r.modes[mode].rank).length/positives.length,mrrAt5:positives.reduce((sum,r)=>sum+(r.modes[mode].rank?1/r.modes[mode].rank:0),0)/positives.length,allEvidenceAt5:positives.filter(r=>r.modes[mode].allEvidence).length/positives.length};
-await writeFile('reports/rag-baseline/hybrid-v1/lowercase-experiment-dev.json',JSON.stringify(report,null,2));console.log(JSON.stringify({metrics:report.metrics},null,2));
+await writeFile('reports/rag-baseline/step1-single-kb/hybrid-v1/lowercase-experiment-dev.json',JSON.stringify(report,null,2));console.log(JSON.stringify({metrics:report.metrics},null,2));
 }finally{if(created){ok(await client.dropCollection({collection_name:tempName}));console.log('Removed own temporary collection: '+tempName);}await client.closeConnection();}

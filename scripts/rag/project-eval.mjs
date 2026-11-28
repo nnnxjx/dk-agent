@@ -9,7 +9,7 @@ import { datasetDir, loadDataset, hash, readJson, writeJson, evidenceCoverage, r
 import { extractTrace, summarizeAnswers } from './answer-eval-lib.mjs';
 import { judgeAnswer } from './answer-judge.mjs';
 
-const [command = 'validate', phase = 'pilot', output = 'reports/rag-baseline/project-step4-v1'] = process.argv.slice(2);
+const [command = 'validate', phase = 'pilot', output = 'reports/rag-baseline/step4-expanded/project-step4-v1'] = process.argv.slice(2);
 if (!['validate', 'prepare', 'retrieval', 'answers'].includes(command) || !['pilot', 'dev', 'test'].includes(phase)) throw new Error('Usage: project-eval.mjs validate|prepare|retrieval|answers pilot|dev|test [outputDir]');
 // 测试集必须显式指定，默认命令不会消耗保留题。
 const data = await loadDataset();
