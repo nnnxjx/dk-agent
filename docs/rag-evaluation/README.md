@@ -9,6 +9,7 @@
 | --- | --- |
 | [四步评测计划](plan.md) | 评测目标、步骤、验收与历史实施记录；本次整体移动，暂不拆历史章节 |
 | [标注方法与模板](guides/baseline-labeling.md) | 原文、Chunk 标签和指标口径，配套模板在同目录 |
+| [人工评测实操指南](guides/manual-evaluation.md) | 从原文审核、检索判断到回答正确性／完整性／忠实度，含页面手测流程与人工记录模板 |
 | [Hybrid 检索改造计划](guides/hybrid-search-plan.md) | Dense/BM25/RRF 设计与历史部署规划 |
 | [Milvus 联调记录](guides/hybrid-step1-runbook.md) | Hybrid 基础设施联调说明 |
 | [单库扩充结果](results/step1-single-kb/expanded.md) | 81 题 Dense/BM25/Hybrid 九组对照 |
