@@ -1,0 +1,57 @@
+{
+  "version": "rag-project-v1",
+  "scope": "仓库真实文档快照；仅有答案；文档问答而非运行行为断言",
+  "sourceCommit": "30bdd5a6ada531eb786e14f3ab37e76069512b7b",
+  "questionCount": 107,
+  "answerableCount": 107,
+  "noAnswerCount": 0,
+  "split": {
+    "dev": 81,
+    "test": 26
+  },
+  "labelStatus": "agent_authored_source_verified_not_independently_human_reviewed",
+  "sources": [
+    {
+      "path": "corpus/overview.md",
+      "originalPath": "README.md",
+      "knowledgeBase": "overview",
+      "sha256": "dd7c6286ac96258a6382145877f684b0fc78bccabc232867434458e72bade4e0"
+    },
+    {
+      "path": "corpus/api.md",
+      "originalPath": "API.md",
+      "knowledgeBase": "api",
+      "sha256": "36c6e2586c9331318bb1df43ba532c3ad8a4dfebe7c75715a00f91706400075c"
+    },
+    {
+      "path": "corpus/adapter.md",
+      "originalPath": "docs/mcp/阶段2-工具适配.md",
+      "knowledgeBase": "adapter",
+      "sha256": "34c039f23109b88994d4a2bb5cc85e50d57a9e8f95ee8c8be369e927ad68fe07"
+    },
+    {
+      "path": "corpus/management.md",
+      "originalPath": "docs/mcp/阶段3-持久化与管理API.md",
+      "knowledgeBase": "management",
+      "sha256": "624dd75a74e48cc36716a317784c2ea7c043052dffbaf12be4fa990207600cc3"
+    },
+    {
+      "path": "corpus/pool.md",
+      "originalPath": "docs/mcp/阶段4-连接缓存与健康检查.md",
+      "knowledgeBase": "pool",
+      "sha256": "3624c306fda24bd9a4334d07e7f85a8fc2a3fa0db6b3f723e0868dbf97d19f1b"
+    },
+    {
+      "path": "corpus/ui.md",
+      "originalPath": "docs/mcp/阶段5-前端管理界面.md",
+      "knowledgeBase": "ui",
+      "sha256": "d1cc18ec93d8058172f69bfb50e498edc1c840a2e7aa37d1a98ad20e81ac14ed"
+    },
+    {
+      "path": "corpus/grants.md",
+      "originalPath": "docs/mcp/阶段6-Agent与工作流授权.md",
+      "knowledgeBase": "grants",
+      "sha256": "4189c3ede96f6d1d0da6c72b89d3fb0ee16b3c43f007eb3ab151da11ce3bf527"
+    }
+  ]
+}
